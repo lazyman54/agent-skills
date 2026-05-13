@@ -65,18 +65,7 @@ echo "Expected: $EXPECTED, Actual: $ACTUAL"
 
 **若 ACTUAL ≠ EXPECTED**：报告缺口，终止流程，提示用户手动核查或检查 glab 分页。
 
-过滤 `system=true` 的自动注释，仅展示人工 comment：
-
-```python
-import json
-data = json.load(open('/tmp/mr_notes_N.json'))
-human_notes = [
-    {"discussion_id": d["id"], "author": n["author"]["username"], "body": n["body"]}
-    for d in data
-    for n in d.get("notes", [])
-    if not n["system"]
-]
-```
+过滤掉每个 discussion 中 `system=true` 的自动注释（如 push 记录、pipeline 状态、跨引用等），只展示人工 comment。
 
 ### 第二步：分类并展示给用户确认
 
