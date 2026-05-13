@@ -8,6 +8,7 @@ description: >-
   触发词：处理CR、fix CR、处理MR反馈、解决review comment、处理审查意见、
   看看MR有什么要改的、处理一下MR的comment、CR反馈、CR comments、
   handle CR、process MR feedback、resolve review comments
+  不处理：主动做代码审查（→ /review）
 metadata:
   author: ericmao
   version: "0.1.0"
