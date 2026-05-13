@@ -31,6 +31,21 @@ Handles MR/PR Code Review feedback end-to-end:
 
 **Triggers**: "处理CR" / "fix CR" / "process MR feedback" / "resolve review comments" / ...
 
+### [plan-coding](./plan-coding/)
+
+Executes a DDD implementation plan phase end-to-end with structured guardrails:
+- Spawns an Explore subagent to load context in parallel (impl-plan, domain-model, use-case, codebase skeleton)
+- Checks phase dependencies before starting; surfaces ambiguities for confirmation
+- Defines code skeleton first and waits for user sign-off before writing tests
+- Follows strict layer order: domain → assembler → application → adapter
+- Each UC gets its own commit (`feat(<scope>): UC-XXX ...`)
+- Runs `go build` + `go test -cover` (domain ≥ 90%) before declaring done
+- Triggers `/cr` as the final gate; updates impl-plan on success
+
+**Requires**: Go project with DDD hexagonal architecture + `impl-plan.md`
+
+**Triggers**: "实现阶段" / "编码阶段N" / "plan-coding" / "开始写阶段" / "implement phase"
+
 ---
 
 ## License

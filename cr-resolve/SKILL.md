@@ -97,7 +97,14 @@ echo "Expected: $EXPECTED, Actual: $ACTUAL"
 ```bash
 git add <受影响文件>
 git commit -m "fix(<scope>): <一句话描述本条 CR comment 的修复>"
-# 用 git log --oneline -1 记录 commitID
+# 提交后立即获取 commit 信息，用于第四步回复
+FULL_SHA=$(git log --format="%H" -1)
+SHORT_SHA=$(git log --format="%h" -1)
+REMOTE_URL=$(git remote get-url origin)
+# 兼容 SSH（git@host:path.git）和 HTTPS（https://host/path.git）两种格式
+GITLAB_HOST=$(echo "$REMOTE_URL" | sed 's|https://||;s|git@||;s|[:/].*||')
+PROJECT_PATH=$(echo "$REMOTE_URL" | sed "s|.*${GITLAB_HOST}[:/]||;s|\.git\$||")
+COMMIT_URL="https://${GITLAB_HOST}/${PROJECT_PATH}/-/commit/${FULL_SHA}"
 ```
 
 对于**跨阶段/设计**类：
@@ -110,10 +117,11 @@ git commit -m "fix(<scope>): <一句话描述本条 CR comment 的修复>"
 每条处理完后立即回复，不要等到最后统一回复：
 
 ```bash
-# 可操作 fix → 回复 commitID
+# 可操作 fix → 回复可点击的 commit 链接（GitLab Markdown 格式）
+# FULL_SHA / SHORT_SHA / COMMIT_URL 已在第三步 commit 后赋值
 glab mr note create <mr_number> \
   --reply "<discussion_id>" \
-  --message "Fixed in <commitID>: <一句话修复摘要>"
+  --message "Fixed in [${SHORT_SHA}](${COMMIT_URL}): <一句话修复摘要>"
 
 # 跨阶段/设计 → 回复说明
 glab mr note create <mr_number> \
