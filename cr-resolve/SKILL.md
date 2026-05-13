@@ -112,6 +112,7 @@ git commit -m "fix(<scope>): <一句话描述本条 CR comment 的修复>"
 
 对于**跨阶段/设计**类：
 - 在项目 backlog 文件追加 TODO 条目
+- **若找到多个 backlog/plan 文件**，列出候选列表并询问用户选择哪一个，**不得擅自选择**
 - 格式：`> TODO(MR #N): <问题描述，待 <里程碑/阶段> 处理>`
 
 ### 第四步：在原 comment 线程回复
