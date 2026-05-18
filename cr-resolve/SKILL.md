@@ -1,14 +1,11 @@
 ---
 name: cr-resolve
 description: >-
-  处理 MR Code Review 反馈：验证 comment 完整性（count check）、分类确认、
-  逐条 fix（每条独立 commit）、在原线程回复 commitID，
-  跨阶段问题记录到项目 backlog 文件并回复说明。
-  与 /review（主动审代码）相对——cr-resolve 是处理别人审完我的代码后留下的 comment。
-  触发词：处理CR、fix CR、处理MR反馈、解决review comment、处理审查意见、
-  看看MR有什么要改的、处理一下MR的comment、CR反馈、CR comments、
-  handle CR、process MR feedback、resolve review comments
-  不处理：主动做代码审查（→ /review）
+  Use when an MR has reviewer comments to address via glab CLI (GitLab).
+  Triggers: 处理CR / fix CR / 处理MR反馈 / 解决review comment / 处理审查意见 /
+  看看MR有什么要改的 / CR反馈 / CR comments /
+  handle CR / process MR feedback / resolve review comments.
+  NOT for: proactive code review (→ /review).
 metadata:
   author: ericmao
   version: "0.1.0"
@@ -17,8 +14,23 @@ license: MIT
 
 # cr-resolve — 处理 MR CR 反馈
 
-> Handle MR Code Review feedback end-to-end.
-> 与 /review（主动审代码）相对——cr-resolve 是处理别人审完我的代码后留下的 comment。
+## Overview
+
+Handle GitLab MR Code Review feedback end-to-end: fetch all comments, classify with user confirmation, fix each in its own commit, reply with the commit link in the original thread.
+与 /review（主动审代码）相对——cr-resolve 是处理别人审完我的代码后留下的 comment。
+
+## When to Use
+
+**Use when:**
+- 你的 MR 收到了 reviewer 留下的 comment，需要逐条处理
+- 需要确保每条 comment 都有对应 commit 且回复了原线程
+- 使用 GitLab + `glab` CLI 的项目
+
+**When NOT to use:**
+- 主动审查他人代码 → 使用 `/review`
+- GitHub PR（`glab` 命令不适用）
+
+---
 
 ## 行为约束
 
@@ -142,6 +154,18 @@ glab mr note create <mr_number> \
 
 git push origin <branch>
 ```
+
+---
+
+## Common Mistakes
+
+| 错误 | 后果 | 正确做法 |
+|------|------|---------|
+| count check 不符就强行继续 | 漏掉 comment，CR 未完整处理 | 必须终止，提示用户手动核查分页 |
+| 多条 fix 合并进一个 commit | 无法追溯单条 CR comment 的修复点 | 每条 fix 对应一个独立 commit |
+| 所有 fix 完再统一回复线程 | 中途出错则部分线程未回复 | 每条 fix commit 后**立即**回复对应 discussion |
+| 忘记过滤 `system=true` 自动注释 | 将 pipeline 状态/push 记录误分类为 comment | 拉取后先过滤，只展示人工 comment |
+| 擅自选择 backlog 文件 | 写错位置，用户难以发现 | 找到多个候选文件时必须列出让用户选择 |
 
 ---
 

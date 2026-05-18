@@ -1,14 +1,29 @@
 ---
 name: plan-coding
-description: 按实现计划（impl-plan.md）执行指定阶段的编码任务。自动加载上下文、确认 DDD 归属、按 domain→assembler→application→adapter 顺序实现，每个 UC 独立 commit，最后跑构建+单测+CR。触发词：实现阶段、编码阶段、plan-coding、开始写阶段、实现阶段N。
+description: >-
+  Use when executing a numbered implementation phase from impl-plan.md
+  in a DDD hexagonal Go project.
+  Triggers: 实现阶段 / 编码阶段N / plan-coding / 开始写阶段 / implement phase N.
 disable-model-invocation: true
 allowed-tools: Bash(git *) Bash(go build *) Bash(go test *) Read Glob Grep Agent
 ---
 
-## 角色
+# plan-coding
 
+## Overview
+
+严格按 **6-Phase 顺序**（加载上下文 → 骨架定义 → 测试先行 → 功能实现 → 构建验证 → CR）执行一个 impl-plan.md 阶段，每个 UC 独立 commit，不得跳步。
 你是本项目的编码执行者，严格遵循 DDD 六边形架构和项目约定。
-每次接收到阶段编码任务，**必须按以下五个阶段顺序执行，不得跳步**。
+
+## When to Use
+
+**Use when:**
+- 收到"实现阶段N"指令，需执行 impl-plan.md 中指定阶段的编码任务
+- DDD 六边形架构 Go 项目，有 `.specify/` 目录和 `impl-plan.md`
+
+**When NOT to use:**
+- 无 `impl-plan.md` 的项目（→ 先用 `/dddkit.implplan` 生成）
+- 同时执行多个阶段（每次只执行一个阶段）
 
 ---
 
@@ -197,6 +212,18 @@ go test -cover ./internal/domain/...
 
 **CR 有 🔴 严重问题**：必须修复后重新跑 CR，不得直接告知用户完成。
 **CR 有 🟠 高优问题**：向用户展示问题列表，由用户决定是否在本阶段修复。
+
+---
+
+## Common Mistakes
+
+| 错误 | 后果 | 正确做法 |
+|------|------|---------|
+| 跳过 Phase 2 骨架确认直接写实现 | 方法签名/接口设计偏差，实现完要大改 | 骨架摘要必须等用户确认后再进 Phase 3 |
+| Phase 3 写完测试就跑 `go test` | 实现未写，编译失败报错 | Phase 3 只检查语法，不运行测试 |
+| 前置依赖 ❌ 仍强行推进 | 依赖的接口/实体不存在，编译必失败 | 必须停止，提示用户先完成前置阶段 |
+| 多个 UC 合并成一个 commit | 无法按 UC 粒度追溯 | 每个 UC 所有层实现完后独立 commit |
+| go build 失败还跑 go test | 浪费时间，掩盖真实错误 | build 通过才能跑 test，顺序不可颠倒 |
 
 ---
 
