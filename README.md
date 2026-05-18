@@ -46,6 +46,19 @@ Executes a DDD implementation plan phase end-to-end with structured guardrails:
 
 **Triggers**: "实现阶段" / "编码阶段N" / "plan-coding" / "开始写阶段" / "implement phase"
 
+### [feishu-notify](./feishu-notify/)
+
+Get notified on **Lark/Feishu** whenever Claude Code finishes a response, completes a task, or needs your approval — so you can step away from the terminal without missing anything.
+
+- 4 notification types: completed reply, waiting for input, task done, permission request
+- Each card shows: session name, project, timestamp, your last input, Claude's reply summary
+- macOS system notification fired simultaneously
+- Works across all projects — scripts live in `~/.claude/hooks/`, just add config per project
+
+**Requires**: Python 3 + a Lark/Feishu group webhook bot
+
+**Not a slash command** — this is a hooks setup guide. See [feishu-notify/README.md](./feishu-notify/README.md) for installation steps.
+
 ---
 
 ## License
