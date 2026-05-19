@@ -46,6 +46,19 @@ Executes a DDD implementation plan phase end-to-end with structured guardrails:
 
 **Triggers**: "实现阶段" / "编码阶段N" / "plan-coding" / "开始写阶段" / "implement phase"
 
+### [spec-maintain](./spec-maintain/)
+
+Captures missing project conventions discovered during code review into the project spec file:
+- Identifies whether a reviewer comment reveals a general architectural/project-specific convention
+- Locates the spec file (`.specify/memory/constitution.md` or `AGENTS.md`)
+- Deduplicates before writing (grep check)
+- Writes the convention in a structured format to the correct section
+- Suggests a standalone commit for the spec change
+
+**Requires**: Project with `.specify/memory/constitution.md` or `AGENTS.md`
+
+**Triggers**: "规范缺失" / "这条规范要不要加到文档" / "update project spec" / "sync convention to spec" / ...
+
 ### [feishu-notify](./feishu-notify/)
 
 Get notified on **Lark/Feishu** whenever Claude Code finishes a response, completes a task, or needs your approval — so you can step away from the terminal without missing anything.
