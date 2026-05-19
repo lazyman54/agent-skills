@@ -8,7 +8,7 @@ description: >-
   NOT for: proactive code review (→ /review).
 metadata:
   author: ericmao
-  version: "0.1.0"
+  version: "0.2.0"
 license: MIT
 ---
 
@@ -35,10 +35,11 @@ Handle GitLab MR Code Review feedback end-to-end: fetch all comments, classify w
 ## 行为约束
 
 - **count check 不通过，禁止继续**：必须先确认拉到了所有 comment
-- **分类表必须用户确认**：展示三类分类后，等用户确认再开始 fix
+- **分类表必须用户确认**：展示分析结果后，等用户确认再开始 fix
 - **每条 fix 独立 commit**：不要把多条修复合并成一个 commit
 - **最小化改动**：不顺手重构，只改 CR comment 指出的问题
 - **必须在原线程回复**：fix 完成后在对应 discussion 下回复 commitID
+- **修复手段不明确时先确认**：展示分类表前必须确保每条 unresolved comment 的修复手段已明确
 
 ---
 
@@ -61,59 +62,105 @@ Handle GitLab MR Code Review feedback end-to-end: fetch all comments, classify w
 
 ## 执行流程
 
-### 第一步：拉取并验证 comment 完整性
+### 第一步：用 subagent 拉取并验证 comment 完整性
 
-```bash
-# 获取预期总 discussion 数
-EXPECTED=$(glab mr view <N> --output json | python3 -c \
-  "import sys,json; d=json.load(sys.stdin); print(d['user_notes_count'])")
+**派发 Explore subagent** 完成拉取和解析，减少主 context 占用：
 
-# 拉取所有 discussion（JSON 格式，含 discussion_id 供后续回复使用）
-glab mr note list <N> --output json > /tmp/mr_notes_<N>.json
+```
+Explore subagent 任务：
+1. 运行以下命令拉取 MR #N 的所有 discussions：
+   glab mr view <N> --output json   → 提取 user_notes_count 作为 EXPECTED
+   glab mr note list <N> --output json > /tmp/mr_notes_<N>.json
 
-# Count check
-ACTUAL=$(python3 -c "import json; print(len(json.load(open('/tmp/mr_notes_<N>.json'))))")
-echo "Expected: $EXPECTED, Actual: $ACTUAL"
+2. 解析 JSON，过滤掉 system=true 的自动注释
+
+3. 输出结构化报告：
+   - EXPECTED vs ACTUAL 数量
+   - 每条 discussion 的：discussion_id、resolved(true/false)、
+     作者、文件路径、行号、comment 正文
 ```
 
 **若 ACTUAL ≠ EXPECTED**：报告缺口，终止流程，提示用户手动核查或检查 glab 分页。
 
-过滤掉每个 discussion 中 `system=true` 的自动注释（如 push 记录、pipeline 状态、跨引用等），只展示人工 comment。
+### 第二步：分析 + 确定修复手段（暂停点）
 
-### 第二步：分类并展示给用户确认
+拿到 subagent 返回的结构化 discussion 列表后：
 
-以表格形式输出，**等用户确认后再动手**：
+#### 2a. 已 resolved：仅展示文件统计
 
-| # | 作者 | Comment 摘要 | 分类 | 说明 |
-|---|------|-------------|------|------|
-| 1 | alice | "missing nil check" | 可操作 fix | 需加防御校验 |
-| 2 | alice | "why this pattern?" | 讨论/已澄清 | 原作者已解释 |
-| 3 | bob | "consider redesign" | 跨阶段/设计 | 超出本 PR 范围 |
+```
+已 Resolved 汇总（N 条）：
+- internal/domain/order.go：2 条
+- internal/adapter/repo.go：1 条
+```
+
+无需逐条展示，不占分析表格空间。
+
+#### 2b. 未 resolved：分析并确定修复手段
+
+**先** 派发 Explore subagent 读取每条 comment 涉及的代码片段，分析根因和修复手段：
+
+```
+Explore subagent 任务：
+对以下每条 unresolved comment，读取对应文件的相关代码（前后 20 行），
+分析并给出：
+- 分析意见：reviewer 指出的问题是否成立？根因是什么？
+- 修复手段：具体如何修改（要足够具体，例如"把 db.Begin() 移到 UnitOfWork 封装"）
+  如果修复手段不确定，明确标注"待确认"
+
+[逐条列出 comment 信息]
+```
+
+**若有任何修复手段标注"待确认"**：
+- 向用户逐条说明不确定原因
+- **等用户确认修复方向后**，再展示完整分类表
+- 不得在修复手段未明确时就开始 fix
+
+#### 2c. 展示分类表（等用户确认）
+
+按**文件路径字母序**排列，等用户确认后再动手：
+
+| # | 作者 | 文件行 | Comment 摘要 | 分析意见 | 修复手段 | 分类 |
+|---|------|--------|-------------|---------|---------|------|
+| 1 | carol | `internal/application/command.go:33` | 事务边界不对 | 事务在 domain 层开启，违反分层约束 | 移到 application 层，注入 UnitOfWork | 可操作 fix |
+| 2 | bob | `internal/adapter/repo.go:55` | N+1 查询 | 循环内调单条查询，应批量 | 改用 IN 查询一次拉取所有记录 | 可操作 fix |
+| 3 | carol | `internal/domain/user.go:67` | 为何用 pointer receiver？ | 该方法不修改状态，value receiver 更合适 | 改为 value receiver | 可操作 fix |
 
 **分类规则**：
 
 | 类别 | 判断标准 |
 |------|---------|
-| **可操作 fix** | 明确指出代码问题，且原作者认可（回复里有"是的/可以/加一下"等） |
-| **讨论/已澄清** | 原作者在线程里已解释，不需要改代码 |
+| **可操作 fix** | 明确指出代码问题，修复手段已确定 |
+| **讨论/已澄清** | 已在线程里解释，不需要改代码 |
 | **跨阶段/设计** | 改动超出本 PR 范围，需记录 TODO |
 
-### 第三步：逐条 fix（每条独立 commit）
+### 第三步：用 subagent 并行实现修复
 
-每条可操作 fix：
-1. 定位受影响代码
-2. 最小化改动 + 必要时补测试
-3. 阶段构建验证：运行项目构建命令
-4. 独立 commit：
+对于**可操作 fix**，按文件依赖关系分组，**独立文件的 fix 可并行派发 subagent**：
+
+```
+策略：
+- 不同文件的独立修复 → 并行 subagent
+- 同一文件的多处修复 → 单个 subagent 处理（避免冲突）
+- 有依赖关系的修复（如 domain 层改动影响 adapter 层）→ 串行
+
+每个 subagent 任务模板：
+  - 读取目标文件
+  - 按照确定的修复手段实施修改
+  - 说明具体改了什么（供主 agent 做 commit message）
+  - 如有必要，同步修改对应测试文件
+```
+
+**subagent 完成后，主 agent**：
+
+每条 fix 独立 commit：
 
 ```bash
 git add <受影响文件>
 git commit -m "fix(<scope>): <一句话描述本条 CR comment 的修复>"
-# 提交后立即获取 commit 信息，用于第四步回复
 FULL_SHA=$(git log --format="%H" -1)
 SHORT_SHA=$(git log --format="%h" -1)
 REMOTE_URL=$(git remote get-url origin)
-# 兼容 SSH（git@host:path.git）和 HTTPS（https://host/path.git）两种格式
 GITLAB_HOST=$(echo "$REMOTE_URL" | sed 's|https://||;s|git@||;s|[:/].*||')
 PROJECT_PATH=$(echo "$REMOTE_URL" | sed "s|.*${GITLAB_HOST}[:/]||;s|\.git\$||")
 COMMIT_URL="https://${GITLAB_HOST}/${PROJECT_PATH}/-/commit/${FULL_SHA}"
@@ -121,16 +168,15 @@ COMMIT_URL="https://${GITLAB_HOST}/${PROJECT_PATH}/-/commit/${FULL_SHA}"
 
 对于**跨阶段/设计**类：
 - 在项目 backlog 文件追加 TODO 条目
-- **若找到多个 backlog/plan 文件**，列出候选列表并询问用户选择哪一个，**不得擅自选择**
+- **若找到多个 backlog/plan 文件**，列出候选列表并询问用户，**不得擅自选择**
 - 格式：`> TODO(MR #N): <问题描述，待 <里程碑/阶段> 处理>`
 
 ### 第四步：在原 comment 线程回复
 
-每条处理完后立即回复，不要等到最后统一回复：
+每条 fix commit 后**立即**回复，不要等到最后统一回复：
 
 ```bash
-# 可操作 fix → 回复可点击的 commit 链接（GitLab Markdown 格式）
-# FULL_SHA / SHORT_SHA / COMMIT_URL 已在第三步 commit 后赋值
+# 可操作 fix → 回复可点击的 commit 链接
 glab mr note create <mr_number> \
   --reply "<discussion_id>" \
   --message "Fixed in [${SHORT_SHA}](${COMMIT_URL}): <一句话修复摘要>"
@@ -143,7 +189,7 @@ glab mr note create <mr_number> \
 # 讨论/已澄清 → 不回复（线程已有解释，无需重复）
 ```
 
-> `discussion_id` 从第一步的 JSON 中提取（每个 discussion 对象的 `id` 字段）。
+> `discussion_id` 从第一步 subagent 返回的结构化数据中直接取用。
 
 ### 第五步：规范沉淀（可选）
 
@@ -151,17 +197,13 @@ glab mr note create <mr_number> \
 
 > 判断标准：这条规则是否同时满足——(1) 其他开发者写类似代码时也应该遵守；(2) 是项目/架构特有的，而非语言通用常识？
 
-如果有 → **调用 `spec-maintain` skill** 将该约定沉淀到项目规范文件（`.specify/memory/constitution.md` 或 `AGENTS.md`）。
-
-如果没有 → 直接进入第六步。
+如果有 → **调用 `spec-maintain` skill** 将该约定沉淀到项目规范文件。
 
 ### 第六步：全量验证 + 推送
 
 ```bash
-# 运行项目构建和测试命令（按项目配置适配）
 <build command>
 <test command>
-
 git push origin <branch>
 ```
 
@@ -172,9 +214,12 @@ git push origin <branch>
 | 错误 | 后果 | 正确做法 |
 |------|------|---------|
 | count check 不符就强行继续 | 漏掉 comment，CR 未完整处理 | 必须终止，提示用户手动核查分页 |
+| 已 resolved 的 comment 也逐条展示 | 表格冗长，重点不突出 | resolved 只展示文件维度统计 |
+| 修复手段未明确就展示分类表 | 表格信息不完整，用户无法有效确认 | 先读代码确定修复手段，有"待确认"项先问用户 |
+| 独立 fix 未用 subagent 并行处理 | 修复耗时长，主 context 占用大 | 不同文件的独立修复并行派发 subagent |
 | 多条 fix 合并进一个 commit | 无法追溯单条 CR comment 的修复点 | 每条 fix 对应一个独立 commit |
 | 所有 fix 完再统一回复线程 | 中途出错则部分线程未回复 | 每条 fix commit 后**立即**回复对应 discussion |
-| 忘记过滤 `system=true` 自动注释 | 将 pipeline 状态/push 记录误分类为 comment | 拉取后先过滤，只展示人工 comment |
+| 忘记过滤 `system=true` 自动注释 | 将 pipeline 状态/push 记录误分类为 comment | 由第一步 subagent 完成过滤 |
 | 擅自选择 backlog 文件 | 写错位置，用户难以发现 | 找到多个候选文件时必须列出让用户选择 |
 
 ---
@@ -188,8 +233,11 @@ git push origin <branch>
 - [ ] 已知构建/测试命令
 
 执行中：
-- [ ] count check：`len(discussions) == user_notes_count`
-- [ ] 分类表已展示并获得用户确认
+- [ ] count check：`len(discussions) == user_notes_count`（由第一步 subagent 完成）
+- [ ] 已 resolved comment 仅展示文件统计
+- [ ] 所有 unresolved comment 的修复手段已明确（无"待确认"）
+- [ ] 分类表已按文件路径排序并获得用户确认
+- [ ] 独立 fix 已并行派发 subagent
 - [ ] 每条 fix 对应独立 commit（无批量合并）
 - [ ] 每条 fix 完成后立即回复对应线程
 - [ ] 跨阶段问题已写入 backlog 文件
