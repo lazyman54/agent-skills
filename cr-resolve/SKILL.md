@@ -145,7 +145,17 @@ glab mr note create <mr_number> \
 
 > `discussion_id` 从第一步的 JSON 中提取（每个 discussion 对象的 `id` 字段）。
 
-### 第五步：全量验证 + 推送
+### 第五步：规范沉淀（可选）
+
+处理完所有 comment 后，检查是否有 comment 揭示了**项目/架构特有的通用约定**：
+
+> 判断标准：这条规则是否同时满足——(1) 其他开发者写类似代码时也应该遵守；(2) 是项目/架构特有的，而非语言通用常识？
+
+如果有 → **调用 `spec-maintain` skill** 将该约定沉淀到项目规范文件（`.specify/memory/constitution.md` 或 `AGENTS.md`）。
+
+如果没有 → 直接进入第六步。
+
+### 第六步：全量验证 + 推送
 
 ```bash
 # 运行项目构建和测试命令（按项目配置适配）
@@ -187,4 +197,5 @@ git push origin <branch>
 执行后：
 - [ ] 构建通过
 - [ ] 测试全绿
+- [ ] 检查是否有 comment 揭示了项目/架构特有的通用约定（有则调用 spec-maintain）
 - [ ] `git push` 已推送
