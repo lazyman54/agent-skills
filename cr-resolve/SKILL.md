@@ -98,18 +98,18 @@ Explore subagent 任务：
 
 #### 2b. 未 resolved：分析并确定修复手段
 
-**先** 派发 Explore subagent 读取每条 comment 涉及的代码片段，分析根因和修复手段：
+**为每条 unresolved comment 各派发一个 Explore subagent，并行分析**（N 条 comment 并行，分析时间不随数量增长）：
 
 ```
-Explore subagent 任务：
-对以下每条 unresolved comment，读取对应文件的相关代码（前后 20 行），
-分析并给出：
+每个 Explore subagent 的任务模板（每条 comment 独立一个）：
+读取 <文件路径> 中第 <行号> 行前后 20 行的代码，
+针对 reviewer comment："<comment 正文>"，分析并给出：
 - 分析意见：reviewer 指出的问题是否成立？根因是什么？
 - 修复手段：具体如何修改（要足够具体，例如"把 db.Begin() 移到 UnitOfWork 封装"）
   如果修复手段不确定，明确标注"待确认"
-
-[逐条列出 comment 信息]
 ```
+
+等所有 subagent 返回结果后汇总。
 
 **若有任何修复手段标注"待确认"**：
 - 向用户逐条说明不确定原因
@@ -216,6 +216,7 @@ git push origin <branch>
 | count check 不符就强行继续 | 漏掉 comment，CR 未完整处理 | 必须终止，提示用户手动核查分页 |
 | 已 resolved 的 comment 也逐条展示 | 表格冗长，重点不突出 | resolved 只展示文件维度统计 |
 | 修复手段未明确就展示分类表 | 表格信息不完整，用户无法有效确认 | 先读代码确定修复手段，有"待确认"项先问用户 |
+| 用一个 subagent 串行分析所有 comment | 分析耗时随 comment 数线性增长 | 每条 comment 独立一个 Explore subagent 并行分析 |
 | 独立 fix 未用 subagent 并行处理 | 修复耗时长，主 context 占用大 | 不同文件的独立修复并行派发 subagent |
 | 多条 fix 合并进一个 commit | 无法追溯单条 CR comment 的修复点 | 每条 fix 对应一个独立 commit |
 | 所有 fix 完再统一回复线程 | 中途出错则部分线程未回复 | 每条 fix commit 后**立即**回复对应 discussion |
