@@ -8,7 +8,7 @@ description: >-
   NOT for: proactive code review (→ /review).
 metadata:
   author: ericmao
-  version: "0.3.0"
+  version: "0.4.0"
 license: MIT
 ---
 
@@ -62,22 +62,34 @@ Handle GitLab MR Code Review feedback end-to-end: fetch all comments, classify w
 
 ## 执行流程
 
-### 第一步：用 subagent 拉取并验证 comment 完整性
+### 第一步：用 subagent 拉取、分析，结果写 /tmp
 
-**派发 Explore subagent** 完成拉取和解析，减少主 context 占用：
+**派发 Explore subagent** 完成拉取、过滤、代码分析，全部结果写入 `/tmp`，主 context 只接收紧凑摘要：
 
 ```
 Explore subagent 任务：
-1. 运行以下命令拉取 MR #N 的所有 discussions：
-   glab mr view <N> --output json   → 提取 user_notes_count 作为 EXPECTED
-   glab mr note list <N> --output json > /tmp/mr_notes_<N>.json
+1. 拉取数据：
+   glab mr view <N> --output json   → 提取 user_notes_count (EXPECTED)
+   glab mr note list <N> --output json > /tmp/cr-<N>-discussions.json
 
-2. 解析 JSON，过滤掉 system=true 的自动注释
+2. 过滤 system=true 的自动注释，统计 ACTUAL
 
-3. 输出结构化报告：
-   - EXPECTED vs ACTUAL 数量
-   - 每条 discussion 的：discussion_id、resolved(true/false)、
-     作者、文件路径、行号、comment 正文
+3. 对每条 unresolved comment，读取文件对应行前后 20 行代码，分析：
+   - 分析意见：问题是否成立？根因是什么？
+   - 修复手段：具体怎么改（足够具体）；不确定则标注"待确认"
+
+4. 将完整分析结果写入 /tmp/cr-<N>-analysis.json：
+   [{ "id": "d1", "resolved": false, "author": "carol",
+      "file": "internal/application/command.go", "line": 33,
+      "comment": "...", "analysis": "...", "fix": "..." }, ...]
+
+5. 仅返回紧凑摘要（主 context 只看这部分）：
+   count check: EXPECTED=6 ACTUAL=6 ✅
+   resolved(3): order.go×2, repo.go×1
+   unresolved(3):
+   - d4 carol application/command.go:33 | 事务边界 | 移到application层 | 明确
+   - d5 carol domain/user.go:67       | pointer receiver | 改value receiver | 明确
+   - d6 bob  adapter/repo.go:55       | N+1查询 | 改IN查询 | 明确
 ```
 
 **若 ACTUAL ≠ EXPECTED**：报告缺口，终止流程，提示用户手动核查或检查 glab 分页。
@@ -96,20 +108,9 @@ Explore subagent 任务：
 
 无需逐条展示，不占分析表格空间。
 
-#### 2b. 未 resolved：分析并确定修复手段
+#### 2b. 未 resolved：从 /tmp 读取分析结果
 
-**为每条 unresolved comment 各派发一个 Explore subagent，并行分析**（N 条 comment 并行，分析时间不随数量增长）：
-
-```
-每个 Explore subagent 的任务模板（每条 comment 独立一个）：
-读取 <文件路径> 中第 <行号> 行前后 20 行的代码，
-针对 reviewer comment："<comment 正文>"，分析并给出：
-- 分析意见：reviewer 指出的问题是否成立？根因是什么？
-- 修复手段：具体如何修改（要足够具体，例如"把 db.Begin() 移到 UnitOfWork 封装"）
-  如果修复手段不确定，明确标注"待确认"
-```
-
-等所有 subagent 返回结果后汇总。
+第一步 subagent 已完成代码分析并写入 `/tmp/cr-<N>-analysis.json`，直接读取，无需再派 subagent。
 
 **若有任何修复手段标注"待确认"**：
 - 向用户逐条说明不确定原因
@@ -147,8 +148,9 @@ Explore subagent 任务：
 每个 subagent 任务模板：
   - 读取目标文件
   - 按照确定的修复手段实施修改
-  - 说明具体改了什么（供主 agent 做 commit message）
+  - 将改动摘要（一句话）写入 /tmp/cr-<N>-fix-<discussion_id>.txt
   - 如有必要，同步修改对应测试文件
+  - 仅返回一句话摘要（供主 agent 做 commit message）
 ```
 
 **subagent 完成后，主 agent**：
@@ -171,25 +173,27 @@ COMMIT_URL="https://${GITLAB_HOST}/${PROJECT_PATH}/-/commit/${FULL_SHA}"
 - **若找到多个 backlog/plan 文件**，列出候选列表并询问用户，**不得擅自选择**
 - 格式：`> TODO(MR #N): <问题描述，待 <里程碑/阶段> 处理>`
 
-### 第四步：在原 comment 线程回复
+### 第四步：批量回复所有 comment 线程
 
-每条 fix commit 后**立即**回复，不要等到最后统一回复：
+所有 fix commit 完成后，将全部回复命令写成脚本**一次性执行**，减少进程启动开销：
 
 ```bash
-# 可操作 fix → 回复可点击的 commit 链接
-glab mr note create <mr_number> \
-  --reply "<discussion_id>" \
+# 每次 commit 后，将回复命令追加到脚本（不立即执行）：
+cat >> /tmp/cr-<N>-replies.sh << 'EOF'
+glab mr note create <mr_number> --reply "<discussion_id>" \
   --message "Fixed in [${SHORT_SHA}](${COMMIT_URL}): <一句话修复摘要>"
+EOF
 
-# 跨阶段/设计 → 回复说明
-glab mr note create <mr_number> \
-  --reply "<discussion_id>" \
-  --message "设计问题，已记录到 <backlog 文件>，本 PR 暂不处理"
+# 所有 commit 完成后，一次性执行：
+bash /tmp/cr-<N>-replies.sh
 
-# 讨论/已澄清 → 不回复（线程已有解释，无需重复）
+# 跨阶段/设计 → 同样追加到脚本：
+# --message "设计问题，已记录到 <backlog 文件>，本 PR 暂不处理"
+
+# 讨论/已澄清 → 不回复
 ```
 
-> `discussion_id` 从第一步 subagent 返回的结构化数据中直接取用。
+> `discussion_id` 从 `/tmp/cr-<N>-analysis.json` 中直接取用。
 
 ### 第五步：规范沉淀（可选）
 
@@ -216,7 +220,7 @@ git push origin <branch>
 | count check 不符就强行继续 | 漏掉 comment，CR 未完整处理 | 必须终止，提示用户手动核查分页 |
 | 已 resolved 的 comment 也逐条展示 | 表格冗长，重点不突出 | resolved 只展示文件维度统计 |
 | 修复手段未明确就展示分类表 | 表格信息不完整，用户无法有效确认 | 先读代码确定修复手段，有"待确认"项先问用户 |
-| 用一个 subagent 串行分析所有 comment | 分析耗时随 comment 数线性增长 | 每条 comment 独立一个 Explore subagent 并行分析 |
+| subagent 分析结果直接返回主 context | comment 多时主 context 膨胀 | 结果写 /tmp，主 context 只接收紧凑摘要 |
 | 独立 fix 未用 subagent 并行处理 | 修复耗时长，主 context 占用大 | 不同文件的独立修复并行派发 subagent |
 | 多条 fix 合并进一个 commit | 无法追溯单条 CR comment 的修复点 | 每条 fix 对应一个独立 commit |
 | 所有 fix 完再统一回复线程 | 中途出错则部分线程未回复 | 每条 fix commit 后**立即**回复对应 discussion |
