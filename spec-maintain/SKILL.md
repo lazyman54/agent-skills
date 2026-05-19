@@ -1,5 +1,8 @@
 ---
 name: spec-maintain
+metadata:
+  author: ericmao
+  version: "0.1.0"
 description: >-
   Use when a code review comment reveals a general coding convention or
   architectural rule that may be missing from the project specification.
