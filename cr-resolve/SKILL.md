@@ -120,11 +120,11 @@ Explore subagent 任务：
 
 按**文件路径字母序**排列，等用户确认后再动手：
 
-| # | 作者 | 文件行 | Comment 摘要 | 分析意见 | 修复手段 | 分类 |
-|---|------|--------|-------------|---------|---------|------|
-| 1 | carol | `internal/application/command.go:33` | 事务边界不对 | 事务在 domain 层开启，违反分层约束 | 移到 application 层，注入 UnitOfWork | 可操作 fix |
-| 2 | bob | `internal/adapter/repo.go:55` | N+1 查询 | 循环内调单条查询，应批量 | 改用 IN 查询一次拉取所有记录 | 可操作 fix |
-| 3 | carol | `internal/domain/user.go:67` | 为何用 pointer receiver？ | 该方法不修改状态，value receiver 更合适 | 改为 value receiver | 可操作 fix |
+| # | 作者 | 文件行 | Comment 摘要 | 分析意见 | 分类 | 修复手段 |
+|---|------|--------|-------------|---------|------|---------|
+| 1 | carol | `internal/application/command.go:33` | 事务边界不对 | 事务在 domain 层开启，违反分层约束 | 可操作 fix | 移到 application 层，注入 UnitOfWork |
+| 2 | bob | `internal/adapter/repo.go:55` | N+1 查询 | 循环内调单条查询，应批量 | 可操作 fix | 改用 IN 查询一次拉取所有记录 |
+| 3 | carol | `internal/domain/user.go:67` | 为何用 pointer receiver？ | 该方法不修改状态，value receiver 更合适 | 可操作 fix | 改为 value receiver |
 
 **分类规则**：
 
