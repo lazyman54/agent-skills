@@ -46,6 +46,19 @@ Executes a DDD implementation plan phase end-to-end with structured guardrails:
 
 **Triggers**: "实现阶段" / "编码阶段N" / "plan-coding" / "开始写阶段" / "implement phase"
 
+### [rules-maintain](./rules-maintain/)
+
+Manages global Claude behavior rules in `~/.claude/rules/` and `~/.claude/CLAUDE.md`:
+- Judges whether a recurring constraint warrants a global rule (two-filter: cross-project + will-repeat)
+- Routes to the right file: CLAUDE.md for top-level principles, rules/*.md for domain-specific constraints
+- Deduplicates before writing (grep check across all rule files)
+- Writes with correct frontmatter (`alwaysApply` or `globs`) and structured format
+- Audit mode: lists all rules, flags redundancy, missing frontmatter, and overly vague entries
+
+**Requires**: `~/.claude/rules/` directory
+
+**Triggers**: "加个全局规则" / "记住这个行为约束" / "全局规则整理" / "审查全局rules" / "audit rules" / ...
+
 ### [spec-maintain](./spec-maintain/)
 
 Captures missing project conventions discovered during code review into the project spec file:
