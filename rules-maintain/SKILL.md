@@ -127,9 +127,9 @@ alwaysApply: true     # 对所有场景生效
 
 ```
 文件               | 问题类型       | 建议
-go-signature.md   | 缺 frontmatter | 加 globs: "**/*.go"
+go-signature.md   | 缺 frontmatter | 加 paths: ["**/*.go"]
 CLAUDE.md         | 与 constitution 重叠 4 条 | 已知，更新时注意同步
-powershell.md     | globs 宽，内容窄 | 二选一：缩 globs 或泛化内容
+powershell.md     | 无 paths，全局加载但内容针对特定工具 | 确认全局加载是否合理
 ```
 
 ---
