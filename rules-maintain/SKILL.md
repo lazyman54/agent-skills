@@ -4,12 +4,13 @@ description: >-
   Use when the user wants to capture a recurring AI behavior constraint as a
   global rule, or audit existing rules in ~/.claude/rules/ for structural
   issues. Triggers: 加个全局规则 / 记住这个行为约束 / 这个以后都要遵守 /
-  全局rules整理 / 审查rules / add global rule / audit rules.
+  全局rules整理 / 审查rules / 规则管理 / 保存规则 /
+  add global rule / audit rules / review rules / save global constraint.
   NOT for: project-specific conventions (→ spec-maintain),
   one-off task instructions.
 metadata:
   author: ericmao
-  version: "0.1.0"
+  version: "0.2.0"
 license: MIT
 ---
 
@@ -19,6 +20,16 @@ license: MIT
 
 将跨项目通用的 AI 行为约束沉淀到 `~/.claude/rules/` 或 `~/.claude/CLAUDE.md`。
 核心原则：**判断 → 路由 → 查重 → 写入**。
+
+## 快速参考
+
+```
+用户说的是…
+├─ "这个项目里..."           → ❌ 停止 → spec-maintain
+├─ 同类问题复发 ≥2 次         → ✅ 新增规则 → Step 1-5
+├─ "审查 / 整理 rules 文件"   → ✅ 审查模式 → 输出表格报告
+└─ 一次性指令                 → ❌ 停止，不记录
+```
 
 ## When to Use
 
@@ -36,10 +47,17 @@ license: MIT
 
 ### Step 1：两问过滤（两个都必须是"是"）
 
-1. **跨项目适用？**："这条约束在我所有项目里都成立，不只是当前这个？"
-2. **会复发？**："如果不记录，AI 下次遇到类似代码还会犯同样的错？"
+1. **跨项目适用？**
+   - ✅ 是：该约束与具体业务无关，换一个项目同样成立
+   - ❌ 否：只在当前项目/语言中出现 → 停止，转 `spec-maintain`
+   - ❓ 不确定：先问用户 "这条约束在你其他项目里也成立吗？" 等确认后再继续
 
-若任意一个"否" → **停止**，无需写 rule
+2. **会复发？**
+   - ✅ 是：同类问题被纠正 ≥2 次（有具体案例可引用）
+   - ❌ 否：首次发生，或用户说"下次我会注意" → 停止，不记录
+   - ❓ 不确定：默认不记录，等复发再触发
+
+若任意一个"否/不确定" → **停止**，无需写 rule
 
 ### Step 2：查重（必须执行 grep，不能只靠推理）
 
