@@ -1,13 +1,12 @@
 ---
 name: rules-maintain
 description: >-
-  Use when the user wants to capture a recurring behavior constraint as a
-  global Claude rule, audit existing rules for redundancy or gaps, or add a
-  new rule file to ~/.claude/rules/. Triggers: 加个全局规则 / 记住这个行为约束 /
-  全局规则整理 / 这个以后都要遵守 / 审查全局rules / add global rule /
-  audit rules / rules 查重.
+  Use when the user wants to capture a recurring AI behavior constraint as a
+  global rule, or audit existing rules in ~/.claude/rules/ for structural
+  issues. Triggers: 加个全局规则 / 记住这个行为约束 / 这个以后都要遵守 /
+  全局rules整理 / 审查rules / add global rule / audit rules.
   NOT for: project-specific conventions (→ spec-maintain),
-  one-off task instructions, business requirements.
+  one-off task instructions.
 metadata:
   author: ericmao
   version: "0.1.0"
@@ -18,130 +17,102 @@ license: MIT
 
 ## Overview
 
-将跨项目通用的行为约束沉淀到 `~/.claude/rules/` 或 `~/.claude/CLAUDE.md`，防止同类纠正反复出现。
-核心原则：**判断 → 定位 → 查重 → 写入** — 先确认是否值得全局记录，再找对位置，最后写入。
+将跨项目通用的 AI 行为约束沉淀到 `~/.claude/rules/` 或 `~/.claude/CLAUDE.md`。
+核心原则：**判断 → 路由 → 查重 → 写入**。
 
 ## When to Use
 
-**触发条件（满足任意一条）：**
-- 用户纠正了 AI 行为，并说"以后都要这样" / "记住这条规则"
-- 同一类问题被纠正了 2 次以上（说明是系统性缺失，不是一次性指令）
-- 用户明确说要整理/审查现有全局 rules
+**新增规则触发条件（满足任意一条）：**
+- 用户纠正了 AI 行为后说"以后都要这样"/"记住这条规则"
+- 同一类问题被纠正 2 次以上（系统性缺失）
 
-**不适用场景：**
-- 只在当前项目生效的约定 → 使用 `spec-maintain`
-- 一次性对话指令（只在本轮任务有效）
-- 需求变更、业务逻辑说明
+**不适用 → 立即路由到正确位置：**
+- 用户说"这个项目里…" → **停止**，这是 `spec-maintain` 的范围
+- 一次性对话指令（只在本轮任务有效）→ 不记录任何地方
 
 ---
 
-## 执行步骤
+## 新增规则流程
 
-### Step 1：判断是否值得全局记录
+### Step 1：两问过滤（两个都必须是"是"）
 
-两个问题（**两个都要是"是"** 才继续）：
+1. **跨项目适用？**："这条约束在我所有项目里都成立，不只是当前这个？"
+2. **会复发？**："如果不记录，AI 下次遇到类似代码还会犯同样的错？"
 
-1. **"这条约束在任何项目里都适用，而不只是当前项目？"**
-2. **"如果不记录，AI 下次还会犯同样的错？"**
+若任意一个"否" → **停止**，无需写 rule
 
-典型需要记录：
-- AI 行为模式（如"回复不加多余 emoji"、"代码注释不写 what 只写 why"）
-- 特定工具的操作禁令（如"飞书含画板文档禁 replace_all"）
-- 语言/格式偏好（如"回复用中文"）
-- 特定技术域约束（如"Go 签名默认单行"）
-
-典型不记录（停止）：
-- 当前任务的业务特殊逻辑
-- 已有 rule 覆盖的内容
-- 只针对一个项目的架构约定（→ spec-maintain）
-
-任意答案为"否" → **停止**，无需更新 rules
-
-### Step 2：定位写入位置
-
-```
-优先级：
-1. ~/.claude/CLAUDE.md         — 顶层哲学原则、工具链特有操作规则（如飞书）
-2. ~/.claude/rules/<name>.md   — 特定域约束（Go、测试、特定工具）
-```
-
-**选 CLAUDE.md 的情形：**
-- 影响 AI 所有行为的基础原则
-- 特定 CLI 工具/平台的操作规范（飞书、glab 等）
-- 语言/回复风格偏好
-
-**选 rules/<name>.md 的情形：**
-- 特定编程语言约束（Go / Python / Shell）
-- 特定场景约束（测试、命名、格式）
-- 需要通过 `globs` 限制生效范围的规则
-
-**文件命名规则：** `<语言/域>-<约束主题>.md`，如 `go-signature-style.md`、`test-coverage-gate.md`
-
-### Step 3：查重（避免重复记录）
-
-读取目标文件，用关键词搜索是否已有相关约定：
+### Step 2：查重（必须执行 grep，不能只靠推理）
 
 ```bash
-grep -ri "关键词1\|关键词2" ~/.claude/rules/
+grep -ri "关键词" ~/.claude/rules/
 grep -i "关键词" ~/.claude/CLAUDE.md
 ```
 
-- 已有记录且表述清晰 → **停止**
-- 已有记录但表述模糊 → 补充澄清，不要重复
-- 未记录 → 继续 Step 4
+- 已有且清晰 → 停止
+- 已有但模糊 → 在原文件补充说明
+- 未覆盖 → 继续
 
-### Step 4：确定写入格式
+### Step 3：选写入位置
 
-**rules/<name>.md 的 frontmatter：**
+| 条件 | 写入位置 |
+|------|---------|
+| 影响所有语言/场景的行为原则 | `~/.claude/CLAUDE.md` |
+| 特定编程语言约束 | `~/.claude/rules/<lang>-<topic>.md` + `globs: "**/*.<ext>"` |
+| 特定工具/平台操作规范 | `~/.claude/rules/<tool>-<topic>.md` + `alwaysApply: true` |
+
+**文件命名：** `<域>-<约束主题>.md`，如 `go-error-handling.md`
+
+### Step 4：写入 frontmatter + 规则
+
+**rules/*.md 必须有 frontmatter，否则加载行为不确定：**
 
 ```yaml
 ---
-description: 一句话说明约束内容和适用场景
-alwaysApply: true          # 所有文件都生效时用这个
-# 或
-globs: "**/*.go"           # 只对特定文件生效时用这个
+globs: "**/*.go"      # 只对特定文件生效
 alwaysApply: false
+# 或
+alwaysApply: true     # 对所有场景生效
 ---
 ```
 
-**规则条目格式：**
+**规则格式（要可操作，禁止写"代码要简洁"这类空话）：**
 
 ```markdown
-## <约束名称>
+## <规则名>
 
-**规则**：[一句话，说明做什么和为什么]
-
-- 禁止：[具体禁止行为]
-- 要求：[具体要求行为]
-- 原因：[违反后果，可选]
+禁止：[具体行为 + 反例代码]
+要求：[具体行为 + 正例代码]
+例外：[明确列出，如无则省略]
 ```
 
-对于 CLAUDE.md 中的简短规则，直接一句话或一个 bullet 即可，不需要完整 H2 结构。
+### Step 5：告知用户
 
-### Step 5：写入并告知用户
-
-完成写入后说明：
-- 写入了什么内容
-- 写入到哪个文件
-- frontmatter 中的 `alwaysApply` / `globs` 设置及原因
-- 建议单独 commit：`docs(rules): 补充 <约束名称> 全局规则`
+说明：写了什么、写到哪里、frontmatter 设置原因。
+建议单独 commit：`docs(rules): 补充 <规则名>`
 
 ---
 
 ## 审查模式（用户要求整理现有 rules 时）
 
-若用户说"整理 rules" / "审查 rules" / "rules 有哪些"，执行以下操作：
+逐一检查每个文件，输出标准格式报告：
 
-1. **列出所有来源**：`~/.claude/CLAUDE.md` + `~/.claude/rules/*.md`
-2. **对每条规则标注**：
-   - 适用范围（所有项目 / Go 专用 / 特定工具）
-   - 加载时机（alwaysApply / globs / 手动引用）
-3. **识别问题**：
-   - 重复：两条规则核心意思相同
-   - 缺 frontmatter：rules/ 下的文件未声明 globs/alwaysApply，加载行为不明确
-   - 过于宽泛：规则表述模糊，agent 可以 rationalize
+**检查维度：**
 
-4. **给出改进建议**（等用户确认后再改）
+| 维度 | 检查方法 |
+|------|---------|
+| 是否有 frontmatter | 读文件头，看有无 `---` frontmatter 块 |
+| globs 与内容是否匹配 | 对比 globs 范围与规则适用对象 |
+| 规则是否可操作 | 能否用"禁止/要求 + 具体行为"表达？不能则为无效规则 |
+| 与其他文件是否重复 | grep 关键词跨文件检查 |
+
+**输出格式：**
+
+```
+文件               | 问题类型       | 建议
+go-signature.md   | 缺 frontmatter | 加 globs: "**/*.go"
+CLAUDE.md         | 与 constitution 重叠 4 条 | 已知，更新时注意同步
+powershell.md     | globs 宽，内容窄 | 二选一：缩 globs 或泛化内容
+```
 
 ---
 
@@ -149,9 +120,8 @@ alwaysApply: false
 
 | 错误 | 后果 | 正确做法 |
 |------|------|---------|
-| 把项目约定写入全局 rules | 在其他项目里产生干扰或错误 | 项目约定 → spec-maintain |
-| 一次性指令也写入 rules | rules 臃肿，无关内容干扰 AI | 问"下次还会犯吗？"不会则不记录 |
-| 跳过查重直接写入 | 出现重复甚至冲突条目 | 总是先 grep 关键词 |
-| rules/*.md 缺 frontmatter | 加载时机不明确 | 明确写 alwaysApply 或 globs |
-| 写入 CLAUDE.md 但只对 Go 有效 | 非 Go 项目也加载，浪费 token | 迁移到 rules/go-xxx.md + globs |
-| 规则表述太泛（"代码要简洁"） | Agent 无法操作，形同没有 | 写具体禁止行为和判断标准 |
+| 用户说"这个项目里"却写入全局 rules | 约束泄漏到其他项目 | "这个项目" → 停止，转 spec-maintain |
+| 靠推理判断查重，不执行 grep | 写出重复甚至冲突的条目 | 必须跑 grep 命令 |
+| rules/*.md 缺 frontmatter | 规则存在但不自动加载 | 必须写 alwaysApply 或 globs |
+| 写"代码要规范"/"注意安全"这类规则 | 空话，agent 无法操作 | 必须具体到禁止/要求的行为 |
+| 一次性指令也写入 rules | rules 臃肿，无关内容干扰 | "下次还会犯吗？"—不会则不记录 |
