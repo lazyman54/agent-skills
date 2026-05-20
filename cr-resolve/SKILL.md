@@ -2,13 +2,11 @@
 name: cr-resolve
 description: >-
   Use when an MR has reviewer comments to address via glab CLI (GitLab).
-  Triggers: 处理CR / fix CR / 处理MR反馈 / 解决review comment / 处理审查意见 /
-  看看MR有什么要改的 / CR反馈 / CR comments /
-  handle CR / process MR feedback / resolve review comments.
+  Triggers: 处理CR / 处理MR反馈 / 解决review comment / handle CR / process MR feedback.
   NOT for: proactive code review (→ /review).
 metadata:
   author: ericmao
-  version: "0.4.0"
+  version: "0.5.0"
 license: MIT
 ---
 
@@ -41,6 +39,12 @@ Handle GitLab MR Code Review feedback end-to-end: fetch all comments, classify w
 - **必须在原线程回复**：fix 完成后在对应 discussion 下回复 commitID
 - **修复手段不明确时先确认**：展示分类表前必须确保每条 unresolved comment 的修复手段已明确
 
+**边界说明：**
+- **count check 零容错**：ACTUAL ≠ EXPECTED 任何数量均视为不通过，偏差 1 条也必须终止；原因通常是 per_page 默认截断
+- **最小化改动范围**：改动限于 CR comment 指出的位置；测试文件可同步修改；不得扩大到周边无关逻辑
+- **独立 commit 例外**：同一文件多处修复允许在一个 commit 内；有代码依赖关系的修复先串行处理再独立 commit
+- **修复手段明确标准**：必须具体到文件路径和改动操作；"改逻辑"不算明确，"删 command.go:33 的事务开启，移到 handler.go:10" 才算
+
 ---
 
 ## 前提条件
@@ -70,29 +74,35 @@ Handle GitLab MR Code Review feedback end-to-end: fetch all comments, classify w
 Explore subagent 任务：
 1. 拉取数据：
    glab mr view <N> --output json   → 提取 user_notes_count (EXPECTED)
-   glab mr note list <N> --output json > /tmp/cr-<N>-discussions.json
+   glab mr note list <N> --per-page 100 --output json > /tmp/cr-<N>-discussions.json
+   # 注意：必须带 --per-page 100，默认 per_page=20 会截断，导致漏掉后续页 comment
+   # 若 ACTUAL < EXPECTED，说明存在多页，需继续翻页直到拉完所有 comment
 
 2. 过滤 system=true 的自动注释，统计 ACTUAL
 
 3. 对每条 unresolved comment，读取文件对应行前后 20 行代码，分析：
    - 分析意见：问题是否成立？根因是什么？
    - 修复手段：具体怎么改（足够具体）；不确定则标注"待确认"
+   - needs_followup 检测：检查该 discussion 的 notes 列表，
+     若 MR owner 已回复过（有我们的 note），且在我们回复**之后**
+     reviewer 又新增了 note（时间戳更晚） → 标记 needs_followup: true
 
 4. 将完整分析结果写入 /tmp/cr-<N>-analysis.json：
    [{ "id": "d1", "resolved": false, "author": "carol",
       "file": "internal/application/command.go", "line": 33,
-      "comment": "...", "analysis": "...", "fix": "..." }, ...]
+      "comment": "...", "analysis": "...", "fix": "...",
+      "needs_followup": false }, ...]
 
 5. 仅返回紧凑摘要（主 context 只看这部分）：
    count check: EXPECTED=6 ACTUAL=6 ✅
    resolved(3): order.go×2, repo.go×1
    unresolved(3):
    - d4 carol application/command.go:33 | 事务边界 | 移到application层 | 明确
-   - d5 carol domain/user.go:67       | pointer receiver | 改value receiver | 明确
+   - d5 carol domain/user.go:67       | pointer receiver | 改value receiver | 明确 [needs_followup]
    - d6 bob  adapter/repo.go:55       | N+1查询 | 改IN查询 | 明确
 ```
 
-**若 ACTUAL ≠ EXPECTED**：报告缺口，终止流程，提示用户手动核查或检查 glab 分页。
+**若 ACTUAL ≠ EXPECTED**：报告缺口，终止流程，提示用户手动核查；缺口原因通常是默认 per_page=20 截断分页——务必确认已带 `--per-page 100` 并遍历所有页。
 
 ### 第二步：分析 + 确定修复手段（暂停点）
 
@@ -134,6 +144,7 @@ Explore subagent 任务：
 | **可操作 fix** | 明确指出代码问题，修复手段已确定 |
 | **讨论/已澄清** | 已在线程里解释，不需要改代码 |
 | **跨阶段/设计** | 改动超出本 PR 范围，需记录 TODO |
+| **reviewer 跟进** | 我们已回复（Fixed in...），reviewer 在我们回复后又新增了评论（needs_followup: true），需重新评估并处理 |
 
 ### 第三步：用 subagent 并行实现修复
 
@@ -215,15 +226,23 @@ git push origin <branch>
 
 ## Common Mistakes
 
+### 致命错误（会导致 CR 未完整处理）
+
 | 错误 | 后果 | 正确做法 |
 |------|------|---------|
 | count check 不符就强行继续 | 漏掉 comment，CR 未完整处理 | 必须终止，提示用户手动核查分页 |
+| 不带 `--per-page 100` 直接查 discussions | 默认截断到 20 条，漏掉后续 comment | 必须带参数并检查是否需要继续翻页 |
+| 我们回复后 reviewer 跟进未识别 | 以为处理完，实际 reviewer 补充了新意见 | 检测 needs_followup 字段，单独列为"reviewer 跟进"类 |
+
+### 常见误操作（影响质量，可弥补）
+
+| 错误 | 后果 | 正确做法 |
+|------|------|---------|
 | 已 resolved 的 comment 也逐条展示 | 表格冗长，重点不突出 | resolved 只展示文件维度统计 |
 | 修复手段未明确就展示分类表 | 表格信息不完整，用户无法有效确认 | 先读代码确定修复手段，有"待确认"项先问用户 |
 | subagent 分析结果直接返回主 context | comment 多时主 context 膨胀 | 结果写 /tmp，主 context 只接收紧凑摘要 |
 | 独立 fix 未用 subagent 并行处理 | 修复耗时长，主 context 占用大 | 不同文件的独立修复并行派发 subagent |
 | 多条 fix 合并进一个 commit | 无法追溯单条 CR comment 的修复点 | 每条 fix 对应一个独立 commit |
-| 所有 fix 完再统一回复线程 | 中途出错则部分线程未回复 | 每条 fix commit 后**立即**回复对应 discussion |
 | 忘记过滤 `system=true` 自动注释 | 将 pipeline 状态/push 记录误分类为 comment | 由第一步 subagent 完成过滤 |
 | 擅自选择 backlog 文件 | 写错位置，用户难以发现 | 找到多个候选文件时必须列出让用户选择 |
 
@@ -239,6 +258,8 @@ git push origin <branch>
 
 执行中：
 - [ ] count check：`len(discussions) == user_notes_count`（由第一步 subagent 完成）
+- [ ] discussions 已带 `--per-page 100` 并检查是否有多页（ACTUAL < EXPECTED 时继续翻页）
+- [ ] 检查 reviewer 在我们回复后是否有跟进评论（needs_followup 字段）
 - [ ] 已 resolved comment 仅展示文件统计
 - [ ] 所有 unresolved comment 的修复手段已明确（无"待确认"）
 - [ ] 分类表已按文件路径排序并获得用户确认
