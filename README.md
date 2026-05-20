@@ -18,6 +18,21 @@ npx skills add ericmao/agent-skills@cr-resolve -g
 
 ## Skills
 
+### [mr-review](./mr-review/)
+
+Reviews someone else's GitLab MR end-to-end:
+- Fetches diff + existing comments via Explore subagent (results in /tmp, main context stays lean)
+- Analyzes against Go rules (go-coding, go-design-patterns, go-code-smells) and project constitution
+- Organizes comments by file with severity (🔴 blocking / 🟡 suggestion / 🟢 nit) and rule source
+- Waits for user confirmation before posting
+- Posts one note per file + final summary; handles large MRs transparently
+
+**Requires**: [`glab`](https://gitlab.com/gitlab-org/cli) (GitLab CLI)
+
+**Triggers**: "review MR" / "CR别人代码" / "帮我看看这个MR" / "审查MR" / ...
+
+**Pair with**: `cr-resolve` (handles review comments on your own MR)
+
 ### [cr-resolve](./cr-resolve/)
 
 Handles MR/PR Code Review feedback end-to-end:
