@@ -76,6 +76,10 @@ cp config.example.json config.json
 }
 ```
 
+> **必须替换的字段**：`feishu.appId`、`feishu.appSecret`、`group.chatId`、`admin.token`（用于 `feishu-approve` CLI 认证，请替换为随机字符串）。完整字段说明见 `bot/config.example.json`。
+
+> **注意**：以上为最小配置。如需私聊通知或选题交互，请参考 `bot/config.example.json` 了解 `targets`、`claude` 等完整字段。
+
 > **安全提醒**：`config.json` 已在 `.gitignore` 中，勿提交凭证。
 
 ```bash
@@ -196,7 +200,7 @@ ls -la ~/.claude/hooks/ | grep feishu
 bash "$REPO/scripts/validate-permission-flow.sh"
 ```
 
-全部 L0–L5 通过后，重启 Claude Code，在会话里触发一个 `ask` 列表中的命令（如 `git push`），确认飞书群里出现批准卡片。
+全部 L0–L4 通过后，重启 Claude Code，在会话里触发一个 `ask` 列表中的命令（如 `git push`），确认飞书群里出现批准卡片。
 
 ---
 
@@ -297,7 +301,7 @@ curl -s http://localhost:13380/health
 ls -la ~/.claude/hooks/ | grep feishu
 
 # 3. 端到端验证（需 bot 运行）
-bash ~/Projects/github/agent-skills/feishu-notify/scripts/validate-permission-flow.sh
+bash "$REPO/scripts/validate-permission-flow.sh"
 
 # 4. 查看 bot 日志
 pm2 logs feishu-notify-bot --lines 50
