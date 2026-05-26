@@ -62,7 +62,7 @@
 | Python hooks | Python 3.9+ | 监听 Claude 生命周期事件，通过 symlink 挂载 |
 | feishu-notify-bot | Node.js 18+ | 发飞书互动卡片、收按钮回调、协调决策 |
 | 决策总线 | `/tmp` 文件 | Hook ↔ Bot ↔ CLI 三方通信 |
-| feishu-approve CLI | Bash | 终端备用批准入口 |
+| feishu-approve CLI | Python | 终端备用批准入口 |
 
 ---
 
@@ -81,10 +81,11 @@ sequenceDiagram
   participant PT as feishu_perm_post_tool.py
 
   C->>PR: stdin: {tool_name, tool_input, cwd}
+  PR->>BOT: POST /permission-request {tool_name, command, project}
+  BOT-->>PR: {token, messageId}
+  BOT->>F: 发黄色交互卡片（含批准/拒绝按钮）
   PR->>LIB: register_pending(token, metadata)
   LIB-->>PR: 写 /tmp/claude_perm_pending/<token>.json
-  PR->>BOT: POST /permission-request {token, tool_name, command}
-  BOT->>F: 发黄色交互卡片（含批准/拒绝按钮）
   PR->>PR: 轮询 /tmp/claude_perm_<token>（每 0.5s，最多 300s）
 
   alt 用户在飞书点按钮
@@ -101,7 +102,7 @@ sequenceDiagram
   PR->>PR: poll 读到结果文件
   PR->>C: stdout: hookSpecificOutput {decision: {behavior: "allow"}}
   C->>PT: 工具已执行，触发 PostToolUse
-  PT->>BOT: POST /decision {token, approved: true}
+  PT->>BOT: POST /decision {token, decision: "approve", source: "claude_terminal"}
   BOT->>F: patch 卡片（若尚未更新）
 ```
 
@@ -118,7 +119,7 @@ sequenceDiagram
   S->>S: 读 transcript JSONL → 提取 custom-title + 用户最后输入
   S->>S: 判断末尾是否为问句 → 选绿色或橙色
   alt bot 可用
-    S->>BOT: POST /stop-notify {session_name, summary, color}
+    S->>BOT: POST /stop-notify {title, template, content}
     BOT->>F: 发结构化通知卡片
   else bot 不可用（降级）
     S->>F: POST Webhook（简单文本卡片）
