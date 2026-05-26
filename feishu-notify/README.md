@@ -2,21 +2,19 @@
 
 > Claude Code / Cursor 执行任务时，通过飞书推送状态通知与交互卡片——让你离开终端也能感知 Agent 进度，并在飞书移动端批准权限。
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](./LICENSE)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
 ---
 
 ## 效果预览
 
-| Stop 通知（任务完成） | 等待回复（橙色） | 权限批准（交互卡）|
-|---|---|---|
-| ![stop-green](docs/assets/stop-green.png) | ![stop-orange](docs/assets/stop-orange.png) | ![perm-card](docs/assets/perm-card.png) |
-
-> 截图位置：`docs/assets/`，可按实际截图替换。
+> 截图待补充。安装完成后，飞书群会收到以下三种卡片：**绿色 Stop 通知**、**橙色等待回复**、**黄色权限批准卡**。
 
 ---
 
 ## 能力矩阵
+
+> 前两列为**部署模式**（选其一），后两列为**AI 客户端**（选其一）。
 
 | 能力 | 仅 Webhook | + feishu-notify-bot | Claude Code | Cursor IDE |
 |------|:---:|:---:|:---:|:---:|
@@ -53,7 +51,8 @@ flowchart LR
 ```bash
 # 1. 克隆仓库
 git clone https://github.com/<your-org>/feishu-notify.git
-REPO=$(pwd)/feishu-notify
+cd feishu-notify
+REPO=$(pwd)
 
 # 2. 配置并启动 feishu-notify-bot
 cd "$REPO/bot"
