@@ -74,6 +74,7 @@ Claude Code 读取 hookSpecificOutput
 | `PostToolUse` | `tool_name` | string | 已执行的工具名 |
 | `PostToolUse` | `tool_input` | object | 工具参数 |
 | `PostToolUse` | `tool_result` | any | 工具执行结果 |
+| `PostToolUse` | `cwd` | string | 工作目录 |
 
 ### hookSpecificOutput 协议
 
@@ -130,10 +131,11 @@ Claude Code 读取 hookSpecificOutput
 #!/usr/bin/env python3
 """PreToolUse hook: notify Feishu before tool execution."""
 import json
+import os
 import sys
-import requests
+import urllib.request
 
-BOT_URL = "http://localhost:13380"
+BOT_URL = os.environ.get("FEISHU_NOTIFY_BOT_URL", "http://localhost:13380")
 
 def main():
     raw = sys.stdin.read()
@@ -149,11 +151,18 @@ def main():
         return
 
     try:
-        requests.post(f"{BOT_URL}/stop-notify", json={
+        payload = json.dumps({
             "title": "即将执行",
             "content": f"命令：{command[:100]}",
             "template": "blue"
-        }, timeout=3)
+        }).encode()
+        req = urllib.request.Request(
+            f"{BOT_URL}/stop-notify",
+            data=payload,
+            headers={"Content-Type": "application/json"},
+            method="POST"
+        )
+        urllib.request.urlopen(req, timeout=3)
     except Exception:
         pass  # 通知失败不阻断工具执行
 
