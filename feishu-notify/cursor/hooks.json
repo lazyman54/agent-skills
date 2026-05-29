@@ -1,0 +1,25 @@
+{
+  "version": 1,
+  "hooks": {
+    "beforeShellExecution": [
+      {
+        "command": "python3 ~/.cursor/hooks/cursor_shell_gate.py",
+        "timeout": 310,
+        "failClosed": true
+      }
+    ],
+    "postToolUse": [
+      {
+        "command": "python3 ~/.cursor/hooks/feishu_cursor_post_tool.py",
+        "matcher": "Shell",
+        "timeout": 10
+      }
+    ],
+    "stop": [
+      {
+        "command": "python3 ~/.cursor/hooks/feishu_stop_cursor.py",
+        "timeout": 15
+      }
+    ]
+  }
+}

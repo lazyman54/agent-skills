@@ -1,0 +1,27 @@
+# GitLab 项目代码克隆及分析报告（本地缓存）
+.claude/gitlab-projects/
+
+# Python cache
+__pycache__/
+
+# App info cache
+.app_info_cache.json
+.external_app_info_cache.json
+
+# Node
+node_modules/
+
+# Config (contains secrets)
+config.json
+
+# Runtime data (sessions, cron jobs, user cache, etc.)
+data/
+!data/.gitkeep
+
+# Claude Code local settings (auto-generated permission cache)
+.claude/settings.local.json
+
+# Claude Code scheduled tasks runtime files
+.claude/scheduled_tasks.lock
+.claude/scheduled_tasks.json
+

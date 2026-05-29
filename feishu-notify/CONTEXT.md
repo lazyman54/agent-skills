@@ -17,11 +17,17 @@ The motivation: when Claude runs long tasks autonomously, the user wants to know
 ### Files
 ```
 hooks/
-├── feishu_stop.py               # Stop event — fires on every reply
-├── feishu_task_completed.py     # TaskCompleted event
-└── feishu_permission_request.py # PermissionRequest event
+├── feishu_perm_lib.py           # Shared decision bus + notify_bot_decision
+├── feishu_permission_request.py # PermissionRequest event
+├── feishu_perm_post_tool.py     # PostToolUse — sync Feishu card after terminal approve
+├── feishu_stop.py               # Stop event
+└── feishu_task_completed.py     # TaskCompleted event
+bot/                            # feishu-notify-bot (Node, :13380)
+bin/feishu-approve              # Terminal approval CLI
+scripts/validate-permission-flow.sh
 
-README.md     # Implementation guide for other users
+README.md     # Quick start (English)
+GUIDE.md      # Full guide: install, DIY, Cursor, auto mode (中文)
 CONTEXT.md    # This file — AI context
 ```
 
@@ -29,7 +35,9 @@ The hook scripts live at `~/.claude/hooks/` but are **symlinked** to this repo:
 ```bash
 ln -sf ~/Projects/github/agent-skills/feishu-notify/hooks/feishu_stop.py ~/.claude/hooks/feishu_stop.py
 ln -sf ~/Projects/github/agent-skills/feishu-notify/hooks/feishu_task_completed.py ~/.claude/hooks/feishu_task_completed.py
+ln -sf ~/Projects/github/agent-skills/feishu-notify/hooks/feishu_perm_lib.py ~/.claude/hooks/feishu_perm_lib.py
 ln -sf ~/Projects/github/agent-skills/feishu-notify/hooks/feishu_permission_request.py ~/.claude/hooks/feishu_permission_request.py
+ln -sf ~/Projects/github/agent-skills/feishu-notify/bin/feishu-approve ~/.local/bin/feishu-approve
 ```
 Edit files in `hooks/` → Claude Code picks up changes immediately. Commit → version controlled.
 
@@ -46,8 +54,10 @@ Edit files in `hooks/` → Claude Code picks up changes immediately. Commit → 
 - Displays `#task_id subject` — matches `Task #N` shown in terminal
 
 **feishu_permission_request.py**
-- Extracts context from `tool_input`: prefers `command` > `file_path` > `url`, truncates at 80 chars
-- Bottom line: "请回到终端批准或拒绝" (return to terminal to approve/deny)
+- **Bash/Edit/…**: approve/deny card + `feishu-approve` CLI; `hookSpecificOutput.decision.behavior` allow/deny
+- **AskUserQuestion**: `POST /ask-user-request` → option buttons on Feishu; answer written as JSON with `updatedInput.questions` + `updatedInput.answers`
+- Shared bus: `/tmp/claude_perm_<token>`; card meta: `/tmp/claude_perm_cards/<token>.json`
+- Bot: `permission-question-card.js` handles `permKind: answer` card callbacks
 
 ### Hook registration (global)
 Add to `~/.claude/ft-settings.json` — applies to all Claude Code sessions:

@@ -29,20 +29,34 @@ lines.append(f'**时间**: {now}')
 
 content = '\n'.join(lines)
 
+# 优先通过 feishu-notify-bot 发
 try:
-    msg = {
-        'msg_type': 'interactive',
-        'card': {
-            'config': {'wide_screen_mode': True},
-            'header': {'title': {'content': '✅ 任务完成', 'tag': 'plain_text'}, 'template': 'green'},
-            'elements': [{'tag': 'markdown', 'content': content}],
-        },
-    }
+    payload = json.dumps({
+        'task_id': task_id, 'task_subject': task_name,
+        'task_description': task_desc, 'project': project,
+    }).encode()
     req = urllib.request.Request(
-        WEBHOOK,
-        data=json.dumps(msg).encode(),
+        'http://localhost:13380/task-completed',
+        data=payload,
         headers={'Content-Type': 'application/json'},
     )
     urllib.request.urlopen(req, timeout=5)
 except Exception:
-    pass
+    # 降级：直接发 Webhook
+    try:
+        msg = {
+            'msg_type': 'interactive',
+            'card': {
+                'config': {'wide_screen_mode': True},
+                'header': {'title': {'content': '✅ 任务完成', 'tag': 'plain_text'}, 'template': 'green'},
+                'elements': [{'tag': 'markdown', 'content': content}],
+            },
+        }
+        req = urllib.request.Request(
+            WEBHOOK,
+            data=json.dumps(msg).encode(),
+            headers={'Content-Type': 'application/json'},
+        )
+        urllib.request.urlopen(req, timeout=5)
+    except Exception:
+        pass

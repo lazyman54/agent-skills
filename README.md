@@ -61,6 +61,23 @@ Executes a DDD implementation plan phase end-to-end with structured guardrails:
 
 **Triggers**: "实现阶段" / "编码阶段N" / "plan-coding" / "开始写阶段" / "implement phase"
 
+### [self-test](./self-test/)
+
+Self-tests a feature/branch end-to-end before commit/MR/merge, with plan + evidence merged into a single doc:
+- Collects 4 input docs (PRD / 技术方案 / use-case / 已有测试用例) and surfaces conflicts for user confirmation before writing the plan
+- Picks layout based on feature scope: single-file for one entry-point, directory-style (`README.md` + per-scene `.md`) for ≥ 2 entry-points
+- Each scene organizes branches in **five-段式 + 3.X.Y numbering** (测试前检查 / 构造入参 / 预期结果 / 实际结果 / 判定) — stable GFM anchors, no duplicate-heading collisions
+- "测试前检查" enforces the 三步检查法: pre-SELECT → setup → post-SELECT confirm, each step with explicit expected state
+- Embeds real evidence (DB outputs / logs / RPC responses) directly into the doc — no scattered `evidence/round*/tc-*.log` files
+- Ships a separate `templates/reviewer-checklist.md` with red-line items (A 真实性 / B 完整性 / C 三维度证据 / D 风险声明 / E 项目规范) for the reviewer
+- UC numbers, table names, error code segments, service names all read from the consumer project's own use-case / 技术方案 / DB schema — no hardcoded assumptions
+
+**Requires**: Project with `docs/` directory; UC编号 / DB schema / RPC 服务名 from the project's own use-case 文档
+
+**Triggers**: "自测" / "测试计划" / "提测前" / "回归测试" / "用例缺口" / "对照需求测一遍" / "开发完了怎么测" / "validate against PRD before integration"
+
+**Pair with**: `plan-coding` (one writes the feature, the other tests it)
+
 ### [rules-maintain](./rules-maintain/)
 
 Manages global Claude behavior rules in `~/.claude/rules/` and `~/.claude/CLAUDE.md`:

@@ -1,0 +1,29 @@
+{
+  "approvalMode": "allowlist",
+  "permissions": {
+    "allow": [
+      "Read(**)",
+      "Glob(**)",
+      "Grep(**)",
+      "WebFetch(**)",
+      "WebSearch(**)",
+      "Write(**)",
+      "Shell(ls*)",
+      "Shell(cat*)",
+      "Shell(head*)",
+      "Shell(tail*)",
+      "Shell(find*)",
+      "Shell(echo*)",
+      "Shell(pwd)",
+      "Shell(which*)",
+      "Shell(env)",
+      "Shell(git status)",
+      "Shell(git log*)",
+      "Shell(git diff*)",
+      "Shell(git show*)",
+      "Shell(git branch*)",
+      "Shell(cd /tmp/feishu-notify-bot*)"
+    ],
+    "deny": []
+  }
+}

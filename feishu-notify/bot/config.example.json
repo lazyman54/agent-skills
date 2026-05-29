@@ -1,0 +1,29 @@
+{
+  "port": 13380,
+  "feishu": {
+    "appId": "YOUR_APP_ID",
+    "appSecret": "YOUR_APP_SECRET"
+  },
+  "claude": {
+    "model": "sonnet",
+    "timeout": 3600000
+  },
+  "admins": [
+    "ericmao"
+  ],
+  "targets": {
+    "receiveIdType": "open_id",
+    "receiveId": "YOUR_OPEN_ID"
+  },
+  "group": {
+    "chatId": "YOUR_CHAT_ID",
+    "name": "your-group"
+  },
+  "admin": {
+    "token": "f81db452dd172bd6e7bc4fe5326a3e7a"
+  },
+  "session": {
+    "ttl": 604800000,
+    "contextWarnPercent": 50
+  }
+}

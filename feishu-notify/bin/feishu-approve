@@ -1,0 +1,13 @@
+#!/usr/bin/env python3
+"""Terminal entry for pending Claude permission requests."""
+
+import sys
+from pathlib import Path
+
+_HOOKS = Path(__file__).resolve().parent.parent / 'hooks'
+sys.path.insert(0, str(_HOOKS))
+
+from feishu_perm_lib import cli_main  # noqa: E402
+
+if __name__ == '__main__':
+    raise SystemExit(cli_main())
