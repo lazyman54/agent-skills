@@ -207,8 +207,43 @@ git log main...HEAD --oneline
 git diff main...HEAD --stat
 ```
 
+**观测工具发现协议（主动推荐 + 引导配置，禁止默认 `grep log/` / `mysql -u...` 自己摸）：**
+
+跑测时 4 维度证据各自依赖不同观测工具，本地环境可能根本没日志/数据库直连。开测前主动推荐工具并引导配置，配置结果记入 **`README.md` 的 2.1 Feature 元信息段「观测工具」一栏**（具体形态见下方示例）。
+
+**推荐工具栈（按维度）：**
+
+| 维度 | 首选工具 | 配置流程 | 用户拒用首选时的备选 |
+|---|---|---|---|
+| **数据**（MySQL / Redis / 缓存）| `mycli` skill | 调用 `Skill mycli`，按其内置引导让用户提供连接（host / port / db / account），保存为 alias 后把 alias 名记入 README 2.1 | DataGrip / SSH + mysql client / 内部 DB 平台 web — 任一种都要把"如何重复执行查询"写清楚 |
+| **日志**（业务 INFO / ERROR）| `observability-skills` | 调用 `Skill observability-skills`，按其引导配置 FLS / Loki / Kibana 接入，把查询入口记入 README 2.1 | kubectl logs / 容器 stdout / 本地 log 目录 grep — 必须确认环境能落到这层 |
+| **告警**（ferror.Report / metric）| 项目告警平台 web | 让用户给告警平台 URL 或单测 mock collector 接入方式 | 单测层 grep `errreport.Report` 调用点 + 标 README 1.4 风险 |
+
+**Step 1 流程（agent 主动跑）：**
+
+1. **检测可用 skill**：先看当前会话可用 skill 列表里是否有 `mycli` / `observability-skills`；有则进入下一步，没有则降级到备选
+2. **逐项推荐 + 引导**（每项独立 ask）：
+   - "建议用 `mycli` 查 MySQL，是否使用？" → yes 调 `Skill mycli` → 拿到连接 alias → 记 README 2.1
+   - "建议用 `observability-skills` 查日志，是否使用？" → yes 调 `Skill observability-skills` → 拿到查询入口 → 记 README 2.1
+   - "告警平台 URL 是？" → 拿链接 → 记 README 2.1
+3. **写入 README 2.1**：在 Feature 元信息段补一栏「观测工具」，示例：
+   ```
+   ## 2.1 Feature 元信息
+   ...
+   - 观测工具：
+     - MySQL：mycli alias `scheduler-staging-001`
+     - 日志：observability-skills（FLS 接入，工程 `scheduler-svr`）
+     - 告警：https://alarm.internal/dashboard/scheduler
+   ```
+4. 跑测时（Step 3）严格按 README 2.1 记录调用对应 skill / URL，**不允许另起炉灶**
+
+**禁止行为**：
+- 不调 `Skill mycli` / `Skill observability-skills`，自己 Bash 跑 `mysql -u root` / `grep <trace_id> /var/log/...` → 项目可能要 VPN / 跳板，本地命令不通
+- README 2.1 没记观测工具就开测 → reviewer 看不到查询通道，无法复现实证
+- 用户已答工具偏好，跑测时换别的工具 → 必须按 README 2.1 记录的工具执行，不能临时切换
+
 **README 2 段产出：**
-1. 2.1 Feature 元信息（分支 / 日期 / 涉及服务 / 触及入口数 / 自测形态）
+1. 2.1 Feature 元信息（分支 / 日期 / 涉及服务 / 触及入口数 / 自测形态 / **观测工具**）
 2. 2.2 输入文档（4 类链接）
 3. 2.3 git diff 入口推导 → 决定单场景 vs 多场景目录形态
 4. 2.4 文档冲突清单 — 4 类文档不一致点逐条让用户确认采信哪份（写"无"是可疑信号）
@@ -259,11 +294,13 @@ P0 缺陷必须在跑测前修复（commit hash 入 defects.md）。修复完再
 - 单测分支也要在 round.md 出现（按"怎么做的怎么写"形态）；不存在 SKIP 状态
 
 **PASS 分支日志最小证据**（防"贴 3 行说没问题"）：
-- trace_id + trace 内总条数（`grep <trace_id> log/... | wc -l`）
+- trace_id + trace 内总条数（**按 `README.md` 2.1 元信息段记录的观测工具查**——若记的是 `observability-skills`，必须 `Skill observability-skills` 调用，禁止改用本地 grep）
 - must-have 命中清单（对照 plan.md X.3 必有日志逐条核对）
 - must-not-have 检查（plan.md X.3 必无日志逐条核对 + ERROR/WARN 数声明）
 - 字段完整度抽查（截 1-2 条业务 INFO 原文）
 - 告警维度独立判定（错误上报触发与否 + 合理性）
+
+数据维度同理：按 `README.md` 2.1 记录的工具查（如 `Skill mycli` + alias），禁止默认 `mysql -u root -p`。
 
 仅当全部通过才能写 PASS。仅贴 3 行 access log 就 PASS = 红旗。
 
@@ -300,6 +337,8 @@ P0 缺陷必须在跑测前修复（commit hash 入 defects.md）。修复完再
 | 跳过 4 文档冲突分析直接写 plan | 回 Step 1 收集 4 类输入 |
 | Step 1 不问用户、自行 grep 项目找 PRD / 技术方案 / use-case | 退回逐项 ask 用户给链接或路径，每类独立确认 |
 | 4 类输入文档合并问"请把相关文档发我" | 拆成 4 个独立 ask（PRD / 技术方案 / use-case / 已有用例），用户漏发的就显式标"无"+ 风险 |
+| 跑测不问观测工具，默认 `grep log/` / `mysql -u root` | Step 1 必须主动推荐 `mycli` / `observability-skills` 并引导用户配置（连接 alias / 查询入口），记入 `README.md` 2.1 元信息段「观测工具」一栏 |
+| 用户已配置 mycli alias，跑测时却用 Bash `mysql ...` | 必须 `Skill mycli` 调用，禁止换工具；切换工具 = 偏离 README 2.1 记录 |
 | 用户没确认冲突就动手写 plan | 停下，先 ask |
 | 基础测试 N/A 列没原因 | 退回 README 2.5 要求填理由 |
 | 单测分支不在 round.md 出现 | 单测也是测试方式之一，必须有 PASS 结果 |
@@ -340,6 +379,8 @@ P0 缺陷必须在跑测前修复（commit hash 入 defects.md）。修复完再
 | "cron / 后台 job 没业务入参，基础测试 5 子类全 N/A 不用列" | 后台 job 的"输入"是表数据条件 + 时间窗口 + 配置；5 子类要在 README 2.5 逐项列 N/A 原因，不允许整段省略。常见命中项：扫描时间窗口边界、limit 上限、空结果集 |
 | "bug 写在 round.md '问题与修复' 段更紧凑，不用拆 defects.md" | 缺陷必须独立到 defects.md：①跨轮跟踪同一 bug 时不必翻多个 round；②README 1.4 上线决策段需要直接引用编号；③reviewer 看缺陷只看一份文件。round.md 只列 BUG{N} 编号 + 引用链 |
 | "我自测发现的 bug 简单，叫 '问题 1' 就行" | 必须 BUG{N} 全 feature 连续编号。命名混乱 = 多轮 round / 多场景跨引时无法对齐 |
+| "查日志直接 `grep <trace_id> log/...` 就行，应该有本地日志吧" | 远程 / k8s / 容器环境通常没本地 log 目录；项目可能用 FLS / Loki / Kibana 或封装好的 observability-skills。开测前必须 ask 用户日志查询通道并记 README 2.1 |
+| "MySQL 直接 `mysql -u root -p` 连一下" | 内网环境通常要跳板 / VPN / 专用 DB 平台；项目可能装了 mycli skill。先 ask 数据查询通道，禁止瞎试连接 |
 
 ## 项目规则联动
 
