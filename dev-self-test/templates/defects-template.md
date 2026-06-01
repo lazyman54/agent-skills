@@ -42,22 +42,21 @@ if err != nil {
 
 **修复方案**（代码 + 日志 + 告警三方一并改）：
 
-代码层：
+代码层（`service.create.go:78`，diff 风格标记修复部分）：
 
-```go
-// service.create.go:78（修复后）
-_, err := s.repo.Insert(ctx, order)
-if err != nil {
-    if mysqlErr, ok := err.(*mysql.DuplicateKeyError); ok && mysqlErr.IsIdempKey() {
-        // 幂等命中：查原 orderID 返回，不再开事务、不再调下游
-        record, err := s.idempRepo.Get(ctx, req.ReqID)
-        if err != nil { return nil, err }
-        log.Info("OrderService_IdempotentHit",
-            "trace_id", traceID, "reqID", req.ReqID, "originalOrderID", record.OrderID)
-        return &Response{Result: &Result{Code: BizCodeIdempotentHit}, OrderID: record.OrderID}, nil
-    }
-    return nil, fmt.Errorf("create order: %w", err)
-}
+```diff
+  _, err := s.repo.Insert(ctx, order)
+  if err != nil {
++     // 幂等命中：查原 orderID 返回，不再开事务、不再调下游
++     if mysqlErr, ok := err.(*mysql.DuplicateKeyError); ok && mysqlErr.IsIdempKey() {
++         record, err := s.idempRepo.Get(ctx, req.ReqID)
++         if err != nil { return nil, err }
++         log.Info("OrderService_IdempotentHit",
++             "trace_id", traceID, "reqID", req.ReqID, "originalOrderID", record.OrderID)
++         return &Response{Result: &Result{Code: BizCodeIdempotentHit}, OrderID: record.OrderID}, nil
++     }
+      return nil, fmt.Errorf("create order: %w", err)
+  }
 ```
 
 日志层：

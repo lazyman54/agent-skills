@@ -211,34 +211,40 @@ git diff main...HEAD --stat
 
 跑测时 4 维度证据各自依赖不同观测工具，本地环境可能根本没日志/数据库直连。开测前主动推荐工具并引导配置，配置结果记入 **`README.md` 的 2.1 Feature 元信息段「观测工具」一栏**（具体形态见下方示例）。
 
-**推荐工具栈（按维度）：**
+**推荐工具栈（按维度，区分 CLI 命令 vs Skill）：**
 
-| 维度 | 首选工具 | 配置流程 | 用户拒用首选时的备选 |
-|---|---|---|---|
-| **数据**（MySQL / Redis / 缓存）| `mycli` skill | 调用 `Skill mycli`，按其内置引导让用户提供连接（host / port / db / account），保存为 alias 后把 alias 名记入 README 2.1 | DataGrip / SSH + mysql client / 内部 DB 平台 web — 任一种都要把"如何重复执行查询"写清楚 |
-| **日志**（业务 INFO / ERROR）| `observability-skills` | 调用 `Skill observability-skills`，按其引导配置 FLS / Loki / Kibana 接入，把查询入口记入 README 2.1 | kubectl logs / 容器 stdout / 本地 log 目录 grep — 必须确认环境能落到这层 |
-| **告警**（ferror.Report / metric）| 项目告警平台 web | 让用户给告警平台 URL 或单测 mock collector 接入方式 | 单测层 grep `errreport.Report` 调用点 + 标 README 1.4 风险 |
+| 维度 | 首选工具 | 工具形态 | 配置 / 调用方式 | 备选 |
+|---|---|---|---|---|
+| **数据**（MySQL / Redis / 缓存）| `mycli` | **CLI 命令**（Homebrew 安装，`which mycli` 可验证）| 用户给 DSN alias（在 `~/.myclirc` 配好）或直连参数；agent 后续用 **Bash** 跑 `mycli --dsn <alias> -e "SQL..."` 或 `mycli -h ... -P ... -u ... -D ... -e "..."` | DataGrip / SSH + mysql client / 内部 DB 平台 web |
+| **日志**（业务 INFO / ERROR）| `observability-skills` | **Claude Code Skill**（在 `~/.claude/skills/observability-skills/` 装好）| agent 后续用 **Skill tool** 调用 `Skill observability-skills`，按 skill 内置接口查日志 | kubectl logs / 容器 stdout / 本地 log 目录 grep |
+| **告警**（ferror.Report / metric）| 项目告警平台 web | **Web URL** | 用户给告警平台 URL 或单测 mock collector 接入方式；agent 必要时 WebFetch | 单测层 grep `errreport.Report` 调用点 + 标 README 1.4 风险 |
+
+> ⚠️ 形态判断**先于**调用方式选择：误把 CLI 当 skill 调（`Skill mycli`）或把 skill 当 CLI 跑（`bash observability-skills`）都会立即失败。
 
 **Step 1 流程（agent 主动跑）：**
 
-1. **检测可用 skill**：先看当前会话可用 skill 列表里是否有 `mycli` / `observability-skills`；有则进入下一步，没有则降级到备选
+1. **检测可用工具**：
+   - CLI：`which mycli` / `which mysql` 看本地有没有
+   - Skill：列出 `~/.claude/skills/` 或当前会话可用 skill，看有无 `observability-skills`
+   - 检测结果记到工具栈选择里
 2. **逐项推荐 + 引导**（每项独立 ask）：
-   - "建议用 `mycli` 查 MySQL，是否使用？" → yes 调 `Skill mycli` → 拿到连接 alias → 记 README 2.1
-   - "建议用 `observability-skills` 查日志，是否使用？" → yes 调 `Skill observability-skills` → 拿到查询入口 → 记 README 2.1
+   - "建议用 `mycli` 查 MySQL（CLI 命令）。请提供：DSN alias 名（在 `~/.myclirc` 已配好），或直连参数（host/port/user/db）" → 拿到答案记 README 2.1
+   - "建议用 `observability-skills` 查日志（Skill）。是否使用？需要哪些接入参数？" → 调 `Skill observability-skills` 配置 → 记 README 2.1
    - "告警平台 URL 是？" → 拿链接 → 记 README 2.1
-3. **写入 README 2.1**：在 Feature 元信息段补一栏「观测工具」，示例：
+3. **写入 README 2.1**：在 Feature 元信息段补一栏「观测工具」，**记完整调用形态**：
    ```
    ## 2.1 Feature 元信息
    ...
    - 观测工具：
-     - MySQL：mycli alias `scheduler-staging-001`
-     - 日志：observability-skills（FLS 接入，工程 `scheduler-svr`）
-     - 告警：https://alarm.internal/dashboard/scheduler
+     - MySQL：CLI 命令 `mycli --dsn scheduler-staging`（DSN 已配置在 ~/.myclirc）
+     - 日志：Skill `observability-skills`（FLS 接入，工程 `scheduler-svr`）
+     - 告警：Web https://alarm.internal/dashboard/scheduler
    ```
-4. 跑测时（Step 3）严格按 README 2.1 记录调用对应 skill / URL，**不允许另起炉灶**
+4. 跑测时（Step 3）严格按 README 2.1 记录的「形态 + 调用」执行：CLI 用 Bash，Skill 用 Skill tool，Web 用 WebFetch。**不允许另起炉灶**。
 
 **禁止行为**：
-- 不调 `Skill mycli` / `Skill observability-skills`，自己 Bash 跑 `mysql -u root` / `grep <trace_id> /var/log/...` → 项目可能要 VPN / 跳板，本地命令不通
+- 把 CLI 当 skill 调（`Skill mycli`）或把 skill 当 CLI 跑（`bash observability-skills`）→ 形态判断错误，立即失败
+- 不查 README 2.1 直接 `mysql -u root` / `grep /var/log/...` → 项目可能要 VPN / 跳板 / 远程日志系统，本地命令不通
 - README 2.1 没记观测工具就开测 → reviewer 看不到查询通道，无法复现实证
 - 用户已答工具偏好，跑测时换别的工具 → 必须按 README 2.1 记录的工具执行，不能临时切换
 
@@ -294,13 +300,13 @@ P0 缺陷必须在跑测前修复（commit hash 入 defects.md）。修复完再
 - 单测分支也要在 round.md 出现（按"怎么做的怎么写"形态）；不存在 SKIP 状态
 
 **PASS 分支日志最小证据**（防"贴 3 行说没问题"）：
-- trace_id + trace 内总条数（**按 `README.md` 2.1 元信息段记录的观测工具查**——若记的是 `observability-skills`，必须 `Skill observability-skills` 调用，禁止改用本地 grep）
+- trace_id + trace 内总条数（**按 `README.md` 2.1 元信息段记录的观测工具查**——CLI 形态用 Bash 调命令，Skill 形态用 Skill tool 调用，Web 形态用 WebFetch；禁止形态错配）
 - must-have 命中清单（对照 plan.md X.3 必有日志逐条核对）
 - must-not-have 检查（plan.md X.3 必无日志逐条核对 + ERROR/WARN 数声明）
 - 字段完整度抽查（截 1-2 条业务 INFO 原文）
 - 告警维度独立判定（错误上报触发与否 + 合理性）
 
-数据维度同理：按 `README.md` 2.1 记录的工具查（如 `Skill mycli` + alias），禁止默认 `mysql -u root -p`。
+数据维度同理：按 `README.md` 2.1 记录的工具查（如 Bash `mycli --dsn xxx -e "..."`），禁止默认 `mysql -u root -p`。
 
 仅当全部通过才能写 PASS。仅贴 3 行 access log 就 PASS = 红旗。
 
@@ -310,8 +316,15 @@ P0 缺陷必须在跑测前修复（commit hash 入 defects.md）。修复完再
 1. 摘要（编号 / 简述 / 优先级 / 状态 / 发现源 / 修复 commit）
 2. 详情 — 每个 BUG 一段 H3：
    - 字段表（优先级 / 状态 / 发现源 / 修复 commit / 修复 round / 回归证据）
-   - 根因（含代码片段，短则贴，长则只说规则）
-   - 修复方案（代码层 + 日志层 + 告警层 三方分组）
+   - **根因（强制格式三件套）**：
+     - ① 文件路径 + 行号（如 `internal/domain/core/scheduling/service.alert_waiting.go:50-52`）
+     - ② 贴问题代码块，**用行内注释标问题点**（`// ❌ ...` / `// ← 缺这个` / `// 注意：...` 等）；多个相关代码段并列贴出便于对比
+     - ③ 一句话总结问题本质（如"字段不对称导致归档跳过日志查询时无法直接定位 DAG 节点"）
+     - 不允许只用纯文字描述根因，必须贴代码
+   - **修复方案（代码层 + 日志层 + 告警层 三方分组）**：
+     - 代码层：贴修复后代码块，**标记修复部分**——可选 diff 风格 `+ / -`、行内注释 `// 新增` / `// 修改`、或贴"修复前 vs 修复后"两块代码对比，让 reviewer 一眼看到改动边界
+     - 日志层：列出新增 / 删除 / 改名的日志事件
+     - 告警层：列出新增 / 删除 / 抑制的告警调用
    - 关联 / 后续计划（推迟类必含现象 / 风险 / 应急 / 后续计划 / 已周知）
 
 **README 1 段产出：**
@@ -338,7 +351,10 @@ P0 缺陷必须在跑测前修复（commit hash 入 defects.md）。修复完再
 | Step 1 不问用户、自行 grep 项目找 PRD / 技术方案 / use-case | 退回逐项 ask 用户给链接或路径，每类独立确认 |
 | 4 类输入文档合并问"请把相关文档发我" | 拆成 4 个独立 ask（PRD / 技术方案 / use-case / 已有用例），用户漏发的就显式标"无"+ 风险 |
 | 跑测不问观测工具，默认 `grep log/` / `mysql -u root` | Step 1 必须主动推荐 `mycli` / `observability-skills` 并引导用户配置（连接 alias / 查询入口），记入 `README.md` 2.1 元信息段「观测工具」一栏 |
-| 用户已配置 mycli alias，跑测时却用 Bash `mysql ...` | 必须 `Skill mycli` 调用，禁止换工具；切换工具 = 偏离 README 2.1 记录 |
+| 用户已配置 mycli DSN alias，跑测时却用 Bash `mysql ...` | 必须 Bash `mycli --dsn <alias>` 调用，禁止换工具；切换工具 = 偏离 README 2.1 记录 |
+| 把 CLI 当 skill 调（`Skill mycli`）或把 skill 当 CLI 跑（`bash observability-skills`）| README 2.1 必须显式记「形态」（CLI / Skill / Web），跑测时按形态选 Bash / Skill tool / WebFetch |
+| BUG 根因只用文字描述，不贴代码 | 必须文件路径+行号 → 代码块带行内注释标问题点（`// ❌` / `// ←`）→ 一句话总结。三件套缺一不可 |
+| BUG 修复方案贴了修复后代码但不标"修改了哪几行" | 必须用 diff 风格 / `// 新增` `// 修改` 注释 / 或修复前后并列对比，让 reviewer 一眼看到改动边界 |
 | 用户没确认冲突就动手写 plan | 停下，先 ask |
 | 基础测试 N/A 列没原因 | 退回 README 2.5 要求填理由 |
 | 单测分支不在 round.md 出现 | 单测也是测试方式之一，必须有 PASS 结果 |
