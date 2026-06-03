@@ -160,18 +160,7 @@ docs/dev-self-test/feature-order-create/
 | `mock token 短路` | 上游服务异常类（超时 / 不可控）| "上游服务不可控" / "回避不稳定的真实依赖" |
 | `单测 + e2e` | 混合：主路径 e2e，故障路径单测兜底 | 说明哪部分用什么 |
 
-**e2e 促成手段（让"看似要 mock"的场景也能 e2e）：**
-
-很多场景不必退单测——可以用辅助手段构造前置条件 / 触发点，把 e2e 跑起来：
-
-| 手段 | 用途 | 例子 |
-|---|---|---|
-| 改 SQL 造数据 / 改状态 | 构造前置状态、模拟边界 | `UPDATE node_execution_record SET dispatched_at = <now-3min> WHERE ...` 造"卡住节点" |
-| 手动触发 MQ | 投递消息驱动 consumer | 本地 producer 往 topic 发构造好的消息 |
-| http 触发 cron | 主动触发后台 job 一次 | `curl -X POST .../cron/trigger?job=xxx` |
-| 改配置 / 时间窗口 | 命中特定分支 | 临时把退避窗口调短 |
-
-**这些促成手段必须在 round_N.md 对应分支记录**（具体 SQL / 触发命令 / 改了什么），保证 reviewer 能复现——否则 PASS 无法被信任。
+**e2e 促成手段**：很多"看似要 mock"的场景可用辅助手段促成 e2e、不必退单测——改 SQL 造数据/状态、本地 producer 触发 MQ、http 触发 cron、改配置命中分支。**这些手段必须记入 round_N.md 对应分支**（具体 SQL / 命令），否则 PASS 不可复现。
 
 **单测分支同样按 4 维度展开**：测试方式 = 单测的分支，round.md 也要列「输入 / 数据（mock 期望）/ 返回 / 日志（断言点）/ 告警（断言点）」5 项；不允许只列"PASS"或"go test 输出全绿"了事。判定标准与 e2e 完全一致。
 
