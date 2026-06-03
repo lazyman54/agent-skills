@@ -24,7 +24,19 @@
 | 起止 | 2026-05-29 ~ 2026-05-30 |
 | 执行人 | ericmao |
 | 状态 | 已完成 |
-| 自测环境 | 本地 dev（mac M1 / Go 1.22 / MySQL 8.0） |
+| 自测环境 | 测试环境实例（详见下方「自测环境」段） |
+
+**自测环境（环境 + 执行手段 + 观测工具，跑测严格照此执行，不临时换）：**
+
+- **环境**：测试环境实例（DB 连测试库 `10.2.4.131 / db_ucircle_mkt_order`）
+- **执行手段**（本地 client 发起）：
+  - CreateOrder（RPC）：本地 grpc client `grpcurl -d '{...}' test-order:8080 order.OrderService/Create`
+  - （若含 Kafka 入口）：本地 `kafka-console-producer --topic order.xxx --broker test-kafka:9092`
+  - （若含 cron 入口）：`curl -X POST http://test-order:8080/internal/cron/trigger?job=xxx`（http 主动触发，不等自然调度）
+- **观测工具**（本机跑，指向测试环境）：
+  - 数据：CLI `mycli --dsn order-staging`（连测试库，Bash 调）
+  - 日志：Skill `observability-skills`（FLS 接入，工程 `order-svr`）
+  - 告警：Web `https://alarm.internal/dashboard/order`
 
 ## 2. 本轮执行规划
 

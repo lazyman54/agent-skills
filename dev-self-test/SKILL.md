@@ -14,7 +14,7 @@ description: Use when a developer self-tests a feature/branch before commit/MR/m
 - [4 维度判定（每分支必跑）](#4-维度判定每分支必跑)
 - [基础测试模板与测试方式](#基础测试模板与测试方式)
 - [修复约束](#修复约束)
-- [四步流程](#四步流程)
+- [自测流程](#自测流程)
 - [违规清单（看到 STOP 重做）](#违规清单看到-stop-重做)
 - [常见合理化与现实](#常见合理化与现实)
 - [项目规则联动](#项目规则联动)
@@ -148,14 +148,31 @@ docs/dev-self-test/feature-order-create/
 
 **测试方式（基础 + 业务测试通用）：**
 
+> **硬原则：端到端（e2e）优先，单测是兜底。** 原则上每个分支都走 e2e；只有 e2e **实在无法稳定复现**的故障类场景（panic 模拟 / CAS 竞态 / 注入故障）才退到单测。"嫌 e2e 麻烦"不是理由——能造场景就必须 e2e。
+
 每个分支必填"测试方式"字段，**默认 e2e**；不是 e2e 时必须说明原因。
 
 | 测试方式 | 适用 | 必须说明的"为什么不 e2e" |
 |---|---|---|
-| `e2e` | 默认 | - |
-| `单测` | CAS / panic / 注入故障类，e2e 难稳定造场景 | "e2e 难稳定造场景" / "并发竞态需 mock" |
+| `e2e` | 默认（绝大多数分支）| - |
+| `单测` | **仅限** e2e 无法稳定复现：panic 模拟 / CAS 竞态 / 注入故障 | "e2e 难稳定造场景" / "并发竞态需 mock" |
 | `mock token 短路` | 上游服务异常类（超时 / 不可控）| "上游服务不可控" / "回避不稳定的真实依赖" |
 | `单测 + e2e` | 混合：主路径 e2e，故障路径单测兜底 | 说明哪部分用什么 |
+
+**e2e 促成手段（让"看似要 mock"的场景也能 e2e）：**
+
+很多场景不必退单测——可以用辅助手段构造前置条件 / 触发点，把 e2e 跑起来：
+
+| 手段 | 用途 | 例子 |
+|---|---|---|
+| 改 SQL 造数据 / 改状态 | 构造前置状态、模拟边界 | `UPDATE node_execution_record SET dispatched_at = <now-3min> WHERE ...` 造"卡住节点" |
+| 手动触发 MQ | 投递消息驱动 consumer | 本地 producer 往 topic 发构造好的消息 |
+| http 触发 cron | 主动触发后台 job 一次 | `curl -X POST .../cron/trigger?job=xxx` |
+| 改配置 / 时间窗口 | 命中特定分支 | 临时把退避窗口调短 |
+
+**这些促成手段必须在 round_N.md 对应分支记录**（具体 SQL / 触发命令 / 改了什么），保证 reviewer 能复现——否则 PASS 无法被信任。
+
+**单测分支同样按 4 维度展开**：测试方式 = 单测的分支，round.md 也要列「输入 / 数据（mock 期望）/ 返回 / 日志（断言点）/ 告警（断言点）」5 项；不允许只列"PASS"或"go test 输出全绿"了事。判定标准与 e2e 完全一致。
 
 **单测分支同样按 4 维度展开**：测试方式 = 单测的分支，round.md 也要列「输入 / 数据（mock 期望）/ 返回 / 日志（断言点）/ 告警（断言点）」5 项；不允许只列"PASS"或"go test 输出全绿"了事。判定标准与 e2e 完全一致。
 
@@ -169,6 +186,8 @@ docs/dev-self-test/feature-order-create/
 
 > ⚠️ "我是 cron 没有业务入参"不是跳过基础测试的理由——后台 job 的"输入"是表数据 + 时间 + 配置，5 子类要逐项给 N/A 原因，不允许整段省略。
 
+> 上表是 plan 期「验什么」。cron / 后台 job 的**执行手段**（怎么触发一次）属执行期：用 **http 触发端点主动触发**，不等自然调度——详见 [Step 3 环境与工具发现](#step-3跑测试--写-round_nmd)。
+
 ## 修复约束
 
 | 约束 | 原因 |
@@ -179,7 +198,64 @@ docs/dev-self-test/feature-order-create/
 | **修复后必须重测原失败 case** | 同分支段下"第 N+1 次执行"，留前后对照 |
 | **代码 + 日志 + 告警三方一并改** | 修 bug 同步检查日志覆盖度 / 抑制误告警 |
 
-## 四步流程
+## 自测流程
+
+> Step 0 先判断走哪条路，再按 Step 1-4 执行。**不要默认从零写 plan**——已有 plan 多半只需执行或局部更新。
+
+### Step 0：入口判断（走哪条路）
+
+**第一步，先识别用户意图**（用户的措辞是*信号*，不是*事实*）：
+
+| 用户说法 | 意图 | 期望路径 |
+|---|---|---|
+| "创建 / 写自测计划" | 建 plan | ① 从无到有 |
+| "更新 / 改自测计划"、"加用例 / 补用例" | 改 plan | ③ 增加 / ④ 修改 |
+| "跑一下自测 / 执行自测 / 提测前测一遍" | 执行 | ② 纯执行 |
+
+**第二步，探测实际状态**（三件事）：
+
+1. **看有无 plan**：检查 `docs/dev-self-test/{branch}/`（多场景看各 `{scene}/`）有没有 plan.md
+2. **确定基线 = 父分支**：当前 feature 分支从哪个分支拉出来的（多数 `main` / `develop`）。确定方法复用 `git-mr-target-branch` 规则：分支命名约定 / `git merge-base HEAD origin/<候选>` 推断 / **不确定问用户**
+3. **跑全量 diff**：`git diff <父分支>...HEAD --stat` + `git log <父分支>..HEAD --oneline`，得到本 feature 全部改动点（入口 / 分支）
+
+**第三步，意图 × 状态交叉校验（矛盾必停，不盲从措辞）**：
+
+| 用户意图 | 实际状态 | 动作 |
+|---|---|---|
+| 创建 | 无 plan | ✓ 走 ① |
+| 创建 | **已有 plan** | ⚠️ 停，确认：重建覆盖旧的？还是你其实想更新 / 执行？默认不覆盖 |
+| 更新 | 有 plan | ✓ 进下方 diff 判定增加 / 修改 |
+| 更新 | **无 plan** | ⚠️ 停，确认：没 plan 可更新，是否改为创建？ |
+| 执行 | 有 plan 且 diff 已覆盖 | ✓ 走 ② |
+| 执行 | **无 plan** | ⚠️ 停，确认：没 plan 没法跑，是否先创建？ |
+| 执行 | 有 plan 但 diff 未覆盖 | ⚠️ 停，提示 plan 过时，建议先更新（增加 / 修改）再跑 |
+
+> 原则：用户语言是意图信号，Step 0 探测才是事实。一致才走对应路径；**矛盾先 ask 确认，不照用户措辞硬干**。
+
+校验通过后，按实际状态分流：
+
+| 情况 | 路线 |
+|---|---|
+| **无 plan** | 场景①从零 → Step 1 → 2 → 3 → 4 |
+| **有 plan，diff 改动点已全覆盖** | 场景②执行 → 锁定用例范围 → 直接 Step 3 |
+| **有 plan，新入口/新分支没覆盖** | 「新增用例」→ 原 plan 直接追加（**不升版本**）→ Step 2 增量 → Step 3 |
+| **有 plan，已覆盖入口的代码逻辑变了**（bug 修复 / 逻辑调整，预期要改）| 「修改用例」→ **升版本**（见下）→ Step 2 改 → Step 3 |
+
+**改动点必须列清单让用户确认**：把 diff 出来的改动点逐条列出，每条标「新增用例 / 修改用例 / 已覆盖无需动」，等用户确认后再动 plan——不允许 agent 自行判定就改。
+
+**plan 版本机制（仅「修改用例」启用；新增用例不升版本）**：
+
+为什么只在修改时升版本——新增用例 plan 只增不改，历史 round 跑的旧用例语义没变；**修改**用例会让"上一轮 round 跑的预期"与"现在 plan 的预期"对不上，必须能追溯哪轮基于哪版。升版本时三处同步：
+
+1. **plan 头部**：`> plan 版本：vN`
+2. **plan 版本历史表**（plan 内嵌，紧跟头部）：
+
+   | 版本 | 日期 | 变更 | commit |
+   |---|---|---|---|
+   | v1 | 2026-05-29 | 初版 | `a1b2c3` |
+   | v2 | 2026-06-02 | 3.2 幂等预期 X→Y | `d4e5f6` |
+
+3. **README 自测依据段**记 plan 当前版本号 + 最近一次变更说明
 
 ### Step 1：开测前准备 — 写 README 2 段（自测依据）
 
@@ -207,49 +283,10 @@ git log main...HEAD --oneline
 git diff main...HEAD --stat
 ```
 
-**观测工具发现协议（主动推荐 + 引导配置，禁止默认 `grep log/` / `mysql -u...` 自己摸）：**
-
-跑测时 4 维度证据各自依赖不同观测工具，本地环境可能根本没日志/数据库直连。开测前主动推荐工具并引导配置，配置结果记入 **`README.md` 的 2.1 Feature 元信息段「观测工具」一栏**（具体形态见下方示例）。
-
-**推荐工具栈（按维度，区分 CLI 命令 vs Skill）：**
-
-| 维度 | 首选工具 | 工具形态 | 配置 / 调用方式 | 备选 |
-|---|---|---|---|---|
-| **数据**（MySQL / Redis / 缓存）| `mycli` | **CLI 命令**（Homebrew 安装，`which mycli` 可验证）| 用户给 DSN alias（在 `~/.myclirc` 配好）或直连参数；agent 后续用 **Bash** 跑 `mycli --dsn <alias> -e "SQL..."` 或 `mycli -h ... -P ... -u ... -D ... -e "..."` | DataGrip / SSH + mysql client / 内部 DB 平台 web |
-| **日志**（业务 INFO / ERROR）| `observability-skills` | **Claude Code Skill**（在 `~/.claude/skills/observability-skills/` 装好）| agent 后续用 **Skill tool** 调用 `Skill observability-skills`，按 skill 内置接口查日志 | kubectl logs / 容器 stdout / 本地 log 目录 grep |
-| **告警**（ferror.Report / metric）| 项目告警平台 web | **Web URL** | 用户给告警平台 URL 或单测 mock collector 接入方式；agent 必要时 WebFetch | 单测层 grep `errreport.Report` 调用点 + 标 README 1.4 风险 |
-
-> ⚠️ 形态判断**先于**调用方式选择：误把 CLI 当 skill 调（`Skill mycli`）或把 skill 当 CLI 跑（`bash observability-skills`）都会立即失败。
-
-**Step 1 流程（agent 主动跑）：**
-
-1. **检测可用工具**：
-   - CLI：`which mycli` / `which mysql` 看本地有没有
-   - Skill：列出 `~/.claude/skills/` 或当前会话可用 skill，看有无 `observability-skills`
-   - 检测结果记到工具栈选择里
-2. **逐项推荐 + 引导**（每项独立 ask）：
-   - "建议用 `mycli` 查 MySQL（CLI 命令）。请提供：DSN alias 名（在 `~/.myclirc` 已配好），或直连参数（host/port/user/db）" → 拿到答案记 README 2.1
-   - "建议用 `observability-skills` 查日志（Skill）。是否使用？需要哪些接入参数？" → 调 `Skill observability-skills` 配置 → 记 README 2.1
-   - "告警平台 URL 是？" → 拿链接 → 记 README 2.1
-3. **写入 README 2.1**：在 Feature 元信息段补一栏「观测工具」，**记完整调用形态**：
-   ```
-   ## 2.1 Feature 元信息
-   ...
-   - 观测工具：
-     - MySQL：CLI 命令 `mycli --dsn scheduler-staging`（DSN 已配置在 ~/.myclirc）
-     - 日志：Skill `observability-skills`（FLS 接入，工程 `scheduler-svr`）
-     - 告警：Web https://alarm.internal/dashboard/scheduler
-   ```
-4. 跑测时（Step 3）严格按 README 2.1 记录的「形态 + 调用」执行：CLI 用 Bash，Skill 用 Skill tool，Web 用 WebFetch。**不允许另起炉灶**。
-
-**禁止行为**：
-- 把 CLI 当 skill 调（`Skill mycli`）或把 skill 当 CLI 跑（`bash observability-skills`）→ 形态判断错误，立即失败
-- 不查 README 2.1 直接 `mysql -u root` / `grep /var/log/...` → 项目可能要 VPN / 跳板 / 远程日志系统，本地命令不通
-- README 2.1 没记观测工具就开测 → reviewer 看不到查询通道，无法复现实证
-- 用户已答工具偏好，跑测时换别的工具 → 必须按 README 2.1 记录的工具执行，不能临时切换
+> 环境与观测工具（在哪测、用什么发起、用什么查）属于**执行期**关注点，不在 Step 1 收集——见 [Step 3 环境与工具发现](#step-3跑测试--写-round_nmd)。Step 1 只管"验什么的依据"，不碰"在哪验/用什么验"。
 
 **README 2 段产出：**
-1. 2.1 Feature 元信息（分支 / 日期 / 涉及服务 / 触及入口数 / 自测形态 / **观测工具**）
+1. 2.1 Feature 元信息（分支 / 日期 / **功能变更摘要（改了哪些功能）** / 涉及服务 / 触及入口数 / 自测形态）
 2. 2.2 输入文档（4 类链接）
 3. 2.3 git diff 入口推导 → 决定单场景 vs 多场景目录形态
 4. 2.4 文档冲突清单 — 4 类文档不一致点逐条让用户确认采信哪份（写"无"是可疑信号）
@@ -257,6 +294,8 @@ git diff main...HEAD --stat
 6. 2.6 索引（4 件套链接）
 
 ### Step 2：写 plan.md + 代码预审
+
+> **关注点分离原则**：plan 只写「**验什么**」（4 维度严格预期：必有哪些日志、哪些表字段变成什么、返回什么、该不该告警），**不写**「在哪验 / 用什么验」（日志去本机还是 FLS、用什么 client 发请求、连哪个库）——后者是 Step 3 执行期的事，跟 plan 无关。plan 跨环境复用：同一份 plan 既能在本地实例跑，也能在测试环境跑。
 
 按 `templates/plan-template.md` 骨架填写每个场景的 plan.md。
 
@@ -286,6 +325,34 @@ P0 缺陷必须在跑测前修复（commit hash 入 defects.md）。修复完再
 
 按 `templates/round-template.md` 骨架。
 
+**环境与工具发现（Step 3 开场，先定后跑；结果记入 round_N.md 元信息「自测环境」段）：**
+
+1. **选环境**（AskUserQuestion 二选一）：
+
+   | | 本地实例 | 测试环境实例 |
+   |---|---|---|
+   | 服务跑在 | 本机（IDE / 本地进程）| 测试环境部署 |
+   | 适合 | 易造数据 / 改状态 / 触发 cron，改代码即时验 | 链路接近线上、依赖真实下游 |
+
+   > 注意：**两种环境的 DB 都连测试库**（如 `10.2.4.131`），所以数据查询工具一致，差异主要在"执行手段连到哪"和"日志去哪查"。
+
+2. **执行手段**（统一用本地 client 发起，按入口形态选）：
+
+   | 入口 | 本地 client | 连到 |
+   |---|---|---|
+   | RPC | grpc client / 自研 cli | 本地端口 / 测试环境 RPC 地址 |
+   | HTTP | curl / 内部网关 | 对应环境 |
+   | Kafka | 本地 kafka producer（`kafka-console-producer` / 项目 producer 脚本）| 对应环境 broker |
+   | **cron / 后台 job** | **本地 curl 打 http 触发端点主动触发**（不等自然调度），如 `curl -X POST http://<host>/internal/cron/trigger?job=<name>` | 对应环境 http 入口 |
+   | 单测 | `go test -run XXX` | 进程内（不连环境）|
+
+3. **观测工具**（都在本机跑，指向随环境变）：
+   - 数据：`mycli` 连测试库（恒定，Bash 调 `mycli --dsn <alias> -e "..."`）
+   - 日志：本地 log grep（本地实例）/ `Skill observability-skills`→FLS（测试环境）
+   - 告警：告警平台 web / 单测 mock collector
+
+4. 全轮严格按本段记录执行，**不临时换工具**；CLI 形态用 Bash、Skill 形态用 Skill tool、Web 用 WebFetch，禁止形态错配。
+
 **round_N.md 必含 5 段：**
 1. 元信息（Run 编号 / 起止 / 执行人 / 状态 / 自测环境）
 2. 本轮执行规划（第一波 / 第二波 / 第三波，简短列分支即可）
@@ -300,13 +367,13 @@ P0 缺陷必须在跑测前修复（commit hash 入 defects.md）。修复完再
 - 单测分支也要在 round.md 出现（按"怎么做的怎么写"形态）；不存在 SKIP 状态
 
 **PASS 分支日志最小证据**（防"贴 3 行说没问题"）：
-- trace_id + trace 内总条数（**按 `README.md` 2.1 元信息段记录的观测工具查**——CLI 形态用 Bash 调命令，Skill 形态用 Skill tool 调用，Web 形态用 WebFetch；禁止形态错配）
+- trace_id + trace 内总条数（**按 round_N.md 自测环境段记录的观测工具查**——CLI 形态用 Bash 调命令，Skill 形态用 Skill tool 调用，Web 形态用 WebFetch；禁止形态错配）
 - must-have 命中清单（对照 plan.md X.3 必有日志逐条核对）
 - must-not-have 检查（plan.md X.3 必无日志逐条核对 + ERROR/WARN 数声明）
 - 字段完整度抽查（截 1-2 条业务 INFO 原文）
 - 告警维度独立判定（错误上报触发与否 + 合理性）
 
-数据维度同理：按 `README.md` 2.1 记录的工具查（如 Bash `mycli --dsn xxx -e "..."`），禁止默认 `mysql -u root -p`。
+数据维度同理：按 round_N.md 自测环境段记录的工具查（如 Bash `mycli --dsn xxx -e "..."`），禁止默认 `mysql -u root -p`。
 
 仅当全部通过才能写 PASS。仅贴 3 行 access log 就 PASS = 红旗。
 
@@ -347,12 +414,15 @@ P0 缺陷必须在跑测前修复（commit hash 入 defects.md）。修复完再
 | heading 里放 emoji（✅/❌/⏸） | 移到正文，heading 保持纯文本 |
 | 跨文档锚点用中文 GFM slug 失效 | 给被引用 H 加 inline `<a id="x"></a>`（同行末尾），引用用 short id |
 | **流程类** | |
+| 照用户措辞硬干（说"创建"就建，已有 plan 也覆盖；说"跑自测"就跑，无 plan 也硬上）| Step 0 意图 × 状态校验：矛盾必停下 ask，不盲从措辞 |
 | 跳过 4 文档冲突分析直接写 plan | 回 Step 1 收集 4 类输入 |
 | Step 1 不问用户、自行 grep 项目找 PRD / 技术方案 / use-case | 退回逐项 ask 用户给链接或路径，每类独立确认 |
 | 4 类输入文档合并问"请把相关文档发我" | 拆成 4 个独立 ask（PRD / 技术方案 / use-case / 已有用例），用户漏发的就显式标"无"+ 风险 |
-| 跑测不问观测工具，默认 `grep log/` / `mysql -u root` | Step 1 必须主动推荐 `mycli` / `observability-skills` 并引导用户配置（连接 alias / 查询入口），记入 `README.md` 2.1 元信息段「观测工具」一栏 |
-| 用户已配置 mycli DSN alias，跑测时却用 Bash `mysql ...` | 必须 Bash `mycli --dsn <alias>` 调用，禁止换工具；切换工具 = 偏离 README 2.1 记录 |
-| 把 CLI 当 skill 调（`Skill mycli`）或把 skill 当 CLI 跑（`bash observability-skills`）| README 2.1 必须显式记「形态」（CLI / Skill / Web），跑测时按形态选 Bash / Skill tool / WebFetch |
+| 跑测不问环境 / 观测工具，默认 `grep log/` / `mysql -u root` | Step 3 开场必须先选环境（本地/测试）+ 确定执行手段 + 观测工具，记入 round_N.md 自测环境段 |
+| 把"环境与工具"塞进 Step 1 / README 2.1 | 环境与工具是执行期关注点，归 Step 3 + round_N.md；README/plan 只记"验什么" |
+| 用户已确定 mycli DSN alias，跑测时却用 Bash `mysql ...` | 必须 Bash `mycli --dsn <alias>` 调用，禁止换工具；切换工具 = 偏离 round_N.md 自测环境段记录 |
+| 把 CLI 当 skill 调（`Skill mycli`）或把 skill 当 CLI 跑（`bash observability-skills`）| round_N.md 自测环境段必须显式记「形态」（CLI / Skill / Web），跑测时按形态选 Bash / Skill tool / WebFetch |
+| cron / 后台 job 等自然调度触发，干等几十秒 | 用 http 触发端点主动触发一次（`curl -X POST .../cron/trigger?job=<name>`）|
 | BUG 根因只用文字描述，不贴代码 | 必须文件路径+行号 → 代码块带行内注释标问题点（`// ❌` / `// ←`）→ 一句话总结。三件套缺一不可 |
 | BUG 修复方案贴了修复后代码但不标"修改了哪几行" | 必须用 diff 风格 / `// 新增` `// 修改` 注释 / 或修复前后并列对比，让 reviewer 一眼看到改动边界 |
 | 用户没确认冲突就动手写 plan | 停下，先 ask |
@@ -366,6 +436,8 @@ P0 缺陷必须在跑测前修复（commit hash 入 defects.md）。修复完再
 | PASS 分支日志小节只贴 3-5 行 + "无 ERROR" | 补 5 项最小证据（trace_id / must-have / must-not-have / 字段抽查 / 告警） |
 | TC 表里每条只标 ✅ 不展开 4 维度 | 概览表可压缩，但每条 TC 必须有独立段落展开数据/返回/日志/告警 4 维度证据 |
 | 单测分支只列 "PASS" 或 "go test ... ok" | 单测也按"输入/数据 mock 期望/返回/日志断言点/告警断言点" 5 项展开 |
+| 能 e2e 却图省事走单测 | e2e 是硬原则；单测仅限 panic / CAS / 注入等 e2e 无法稳定复现的场景。能造场景就必须 e2e |
+| e2e 靠改 SQL / 触发 MQ 促成，但 round 没记手段 | 促成手段（具体 SQL / 触发命令 / 改的配置）必须记进 round_N.md 对应分支，否则 PASS 不可复现 |
 | "必有日志"用三列表格塞"必含字段"多值 | 改用列表（每条独立项 + 必含字段子项） |
 | **修复 / 缺陷类** | |
 | 修复 bug 只改代码不补日志 | 代码 + 日志 + 告警三方一并改 |
@@ -392,11 +464,13 @@ P0 缺陷必须在跑测前修复（commit hash 入 defects.md）。修复完再
 | "单测分支不用进 round.md，CI 跑过就行" | 单测也是测试方式之一，必须在 round.md 出现 PASS 结果，按"怎么做的怎么写"展示 |
 | "互斥 / 频控拒绝是错误，应该 ferror.Report" | 业务规则拒绝不是系统异常，告警合理性维度会判 FAIL |
 | "测试方式没填，反正都是 e2e" | 测试方式必填。是 e2e 也要写 `e2e`；不是 e2e 必须给"为什么不 e2e"理由 |
+| "这个 case 要造数据/造状态麻烦，走单测算了" | 先试 e2e 促成手段：改 SQL 造数据、手动触发 MQ、http 触发 cron。只有 panic/CAS 这类真的造不出来才退单测 |
 | "cron / 后台 job 没业务入参，基础测试 5 子类全 N/A 不用列" | 后台 job 的"输入"是表数据条件 + 时间窗口 + 配置；5 子类要在 README 2.5 逐项列 N/A 原因，不允许整段省略。常见命中项：扫描时间窗口边界、limit 上限、空结果集 |
 | "bug 写在 round.md '问题与修复' 段更紧凑，不用拆 defects.md" | 缺陷必须独立到 defects.md：①跨轮跟踪同一 bug 时不必翻多个 round；②README 1.4 上线决策段需要直接引用编号；③reviewer 看缺陷只看一份文件。round.md 只列 BUG{N} 编号 + 引用链 |
 | "我自测发现的 bug 简单，叫 '问题 1' 就行" | 必须 BUG{N} 全 feature 连续编号。命名混乱 = 多轮 round / 多场景跨引时无法对齐 |
-| "查日志直接 `grep <trace_id> log/...` 就行，应该有本地日志吧" | 远程 / k8s / 容器环境通常没本地 log 目录；项目可能用 FLS / Loki / Kibana 或封装好的 observability-skills。开测前必须 ask 用户日志查询通道并记 README 2.1 |
-| "MySQL 直接 `mysql -u root -p` 连一下" | 内网环境通常要跳板 / VPN / 专用 DB 平台；项目可能装了 mycli skill。先 ask 数据查询通道，禁止瞎试连接 |
+| "查日志直接 `grep <trace_id> log/...` 就行，应该有本地日志吧" | 本地实例可能有本地 log，测试环境得用 FLS（observability-skills）。Step 3 选完环境再定日志查询通道，记 round_N.md 自测环境段，别想当然 |
+| "MySQL 直接 `mysql -u root -p` 连一下" | 不管本地还是测试环境都连测试库，用 `mycli`（CLI）。Step 3 确定连接 alias，禁止瞎试 `mysql -u root` |
+| "cron 自测等它 30s 自己跑一次就行" | 干等浪费时间且难对齐时序；用 http 触发端点主动触发一次，立即验证 |
 
 ## 项目规则联动
 
