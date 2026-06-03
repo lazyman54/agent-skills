@@ -1,4 +1,4 @@
-# self-auto-test
+# auto-self-test
 
 一个 Claude Code skill，引导开发者在提测 / 合并 / 发版前完成标准化自测，并产出可审计的归档文档。
 
@@ -26,13 +26,13 @@
 仓库根目录下用 symlink 方式装入全局 skills（修改仓库代码会即时生效）：
 
 ```bash
-ln -s $(pwd)/self-auto-test ~/.claude/skills/self-auto-test
+ln -s $(pwd)/auto-self-test ~/.claude/skills/auto-self-test
 ```
 
 或者直接拷贝（独立副本，不跟仓库同步）：
 
 ```bash
-cp -r self-auto-test ~/.claude/skills/self-auto-test
+cp -r auto-self-test ~/.claude/skills/auto-self-test
 ```
 
 装完后，任何项目里只要触发关键词命中（"自测" / "提测前" / "测试计划" / "回归测试" / "发版前自测" 等），AI 都会自动加载本 skill。
@@ -59,13 +59,13 @@ skill 按 4 步流程工作：
 
 路径规则：
 
-- 单场景：`docs/self-auto-test/{branch}/{README,plan,round1,defects}.md`
-- 多场景：`docs/self-auto-test/{branch}/README.md` + `docs/self-auto-test/{branch}/{scene}/{plan,round1,defects}.md`
+- 单场景：`docs/auto-self-test/{branch}/{README,plan,round1,defects}.md`
+- 多场景：`docs/auto-self-test/{branch}/README.md` + `docs/auto-self-test/{branch}/{scene}/{plan,round1,defects}.md`
 
 ## 文件结构
 
 ```
-self-auto-test/
+auto-self-test/
 ├── README.md                  # 本文档（项目门面）
 ├── SKILL.md                   # skill 主文档（agent 加载）
 └── templates/

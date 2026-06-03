@@ -1,5 +1,5 @@
 ---
-name: self-auto-test
+name: auto-self-test
 version: 1.0.0
 description: Use when a developer self-tests a feature/branch before commit/MR/merge — for code changes touching business logic, or before writing self-test docs (plan.md / round_N.md / defects.md), or when validating implementation against PRD/技术方案/use-case docs. Triggers on "自测", "测试计划", "提测前", "回归测试", "用例缺口", "对照需求测一遍", "开发完了怎么测", "提测自测", "发版前自测".
 ---
@@ -45,13 +45,13 @@ description: Use when a developer self-tests a feature/branch before commit/MR/m
 
 | feature 触及对外入口数 | 形态 | 路径示例 |
 |---|---|---|
-| 仅 1 场景 | **平铺**（同目录）| `docs/self-auto-test/{branch}/{README,plan,round1,defects}.md` |
-| ≥ 2 场景 | **场景子目录** + 顶层 README | `docs/self-auto-test/{branch}/README.md` + `docs/self-auto-test/{branch}/{scene}/{plan,round1,defects}.md` |
+| 仅 1 场景 | **平铺**（同目录）| `docs/auto-self-test/{branch}/{README,plan,round1,defects}.md` |
+| ≥ 2 场景 | **场景子目录** + 顶层 README | `docs/auto-self-test/{branch}/README.md` + `docs/auto-self-test/{branch}/{scene}/{plan,round1,defects}.md` |
 
 多场景目录树示意：
 
 ```
-docs/self-auto-test/feature-order-create/
+docs/auto-self-test/feature-order-create/
 ├── README.md                  # feature 级（跨场景）
 ├── createorder/
 │   ├── plan.md
@@ -194,7 +194,7 @@ docs/self-auto-test/feature-order-create/
 
 ### Step 0：入口判断（走哪条路）
 
-定路线靠两样：**意图**（用户措辞，只是*信号*）+ **状态**（事实）。探测状态三件事：①有无 plan（看 `docs/self-auto-test/{branch}/`）②基线 = 父分支（复用 `git-mr-target-branch` 确定法，不确定问用户）③`git diff <父分支>...HEAD` 取全量改动点。
+定路线靠两样：**意图**（用户措辞，只是*信号*）+ **状态**（事实）。探测状态三件事：①有无 plan（看 `docs/auto-self-test/{branch}/`）②基线 = 父分支（复用 `git-mr-target-branch` 确定法，不确定问用户）③`git diff <父分支>...HEAD` 取全量改动点。
 
 **意图 × 状态校验——矛盾必停，不盲从措辞**：
 
