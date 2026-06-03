@@ -10,6 +10,7 @@
 - [4 件套产出](#4-件套产出)
 - [文件结构](#文件结构)
 - [反馈](#反馈)
+- [版本历史](#版本历史)
 
 ## 解决什么问题
 
@@ -79,3 +80,11 @@ dev-self-test/
 skill 在使用中如发现规则缺失 / 措辞含糊 / 跨项目兼容性问题，欢迎在仓库提 issue 或直接修改 `SKILL.md` 后提交 MR。
 
 skill 本身用 RED-GREEN-REFACTOR 方式开发：让无 skill 的 subagent 盲测产出违规作为基线，再让 reviewer 读优化后 SKILL 验证规则覆盖度。新增规则建议附测试场景。
+
+## 版本历史
+
+> skill 版本号见 `SKILL.md` frontmatter `version` 字段。
+
+| 版本 | 日期 | 主要变更 |
+|---|---|---|
+| 1.0.0 | 2026-06-03 | 首个稳定版：4 件套架构（README/plan/round_N/defects）+ 4 维度判定 + Iron Laws；Step 0 入口分流（从零/执行/增加/修改）+ 意图×状态校验；plan 版本机制；e2e 优先 + 促成手段；环境与观测工具执行期分离（归 round_N.md）；cron→http 触发 |
