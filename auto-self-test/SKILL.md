@@ -1,6 +1,6 @@
 ---
 name: auto-self-test
-version: 1.0.0
+version: 1.1.0
 description: Use when a developer self-tests a feature/branch before commit/MR/merge — for code changes touching business logic, or before writing self-test docs (plan.md / round_N.md / defects.md), or when validating implementation against PRD/技术方案/use-case docs. Triggers on "自测", "测试计划", "提测前", "回归测试", "用例缺口", "对照需求测一遍", "开发完了怎么测", "提测自测", "发版前自测".
 ---
 
@@ -70,6 +70,8 @@ docs/auto-self-test/feature-order-create/
 - 目录名**不带日期**——日期归 round_N.md 元信息段，目录跟随分支生命周期；同分支多次自测沿用同目录、追加 round_(N+1).md
 - `{scene}`：场景名小写 + 短横线（`createorder` / `notify-strategy-change`），与目录名一致
 - 场景 = 一个对外入口（一个 RPC method / Cron Job / Kafka Consumer / HTTP endpoint）
+
+**目录不存在时**：先告知用户将创建的完整路径（如 `docs/auto-self-test/feature-order-create/`），**确认后再 `mkdir`**，禁止不打招呼直接建目录。
 
 **编号约定：**
 - 不用 `§` 符号，直接写 `2.1` / `3.X.Y`，跳转用 markdown 链接 `[2.1](#21-xxx)`
