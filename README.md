@@ -2,6 +2,13 @@
 
 A collection of [Claude Code](https://claude.ai/code) skills for everyday development workflows.
 
+## 目录
+
+- [Install all skills](#install-all-skills)
+- [Install a single skill](#install-a-single-skill)
+- [Skills](#skills)
+- [License](#license)
+
 ## Install all skills
 
 ```bash
@@ -77,6 +84,21 @@ Self-tests a feature/branch end-to-end before commit/MR/merge, with plan + evide
 **Triggers**: "自测" / "测试计划" / "提测前" / "回归测试" / "用例缺口" / "对照需求测一遍" / "开发完了怎么测" / "validate against PRD before integration"
 
 **Pair with**: `plan-coding` (one writes the feature, the other tests it)
+
+### [test-env-triage](./test-env-triage/)
+
+Triages dev/test environment problems by routing the symptom to the right layer and tool, instead of guessing or grepping blindly:
+- Four trunks by symptom: RPC/interface error, stuck workflow, wrong data, service/config/task failure
+- Narrows layer by layer (返回码 → 日志 → 数据 → 代码), stopping as soon as the root-cause layer is confirmed with evidence
+- Project-specific tool discipline: `mycli` for the test DB (not `mysql -u root`), `observability-skills` for logs/trace, bigint-ms timestamp conversion, 包头/包体 two-layer error codes
+- A concretization of `systematic-debugging` Phase 1 — locates root cause, then hands off the fix
+- Built and validated with the writing-skills TDD loop (baseline → skill → verify)
+
+**Requires**: 测试环境工具链 — `mycli` (test DB) + `observability-skills` (FLS logs/trace) + FRPC 服务
+
+**Triggers**: "排查" / "测试环境出问题" / "接口报错怎么查" / "工作流卡住" / "数据不对" / "从哪开始查" / "定位根因"
+
+**Pair with**: `auto-self-test` (one proactively validates, one triages failures) / `systematic-debugging` (deep root-cause + fix)
 
 ### [rules-maintain](./rules-maintain/)
 
