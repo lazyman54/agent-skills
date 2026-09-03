@@ -4,22 +4,35 @@ A collection of [Claude Code](https://claude.ai/code) skills for everyday develo
 
 ## 目录
 
-- [Install all skills](#install-all-skills)
-- [Install a single skill](#install-a-single-skill)
+- [安装](#安装)
 - [Skills](#skills)
 - [License](#license)
 
-## Install all skills
+## 安装
+
+**主推内部 GitLab**（公司内网可达），GitHub 公开镜像作为外网备选。
+
+### Install all skills
 
 ```bash
-npx skills add ericmao/agent-skills -g
+# 内部 GitLab（推荐）
+npx skills add git@gitlab.futunn.com:ericmao/agent-skills.git -g
+
+# GitHub 公开镜像（外网）
+npx skills add lazyman54/agent-skills -g
 ```
 
-## Install a single skill
+### Install a single skill
 
 ```bash
-npx skills add ericmao/agent-skills@cr-resolve -g
+# 内部 GitLab（推荐）
+npx skills add git@gitlab.futunn.com:ericmao/agent-skills.git --skill auto-self-test -g
+
+# GitHub 公开镜像（外网）
+npx skills add lazyman54/agent-skills --skill auto-self-test -g
 ```
+
+> **前置条件**：本机已装 `mycli`（连 dev/test 库用）并配置 `~/.myclirc` 别名（`dev` / `test` / `manager`）；内部 GitLab 安装需 SSH key 已配置。具体见各 skill 的 README。
 
 ---
 
@@ -68,22 +81,33 @@ Executes a DDD implementation plan phase end-to-end with structured guardrails:
 
 **Triggers**: "实现阶段" / "编码阶段N" / "plan-coding" / "开始写阶段" / "implement phase"
 
-### [self-test](./self-test/)
+### [auto-self-test](./auto-self-test/)
 
-Self-tests a feature/branch end-to-end before commit/MR/merge, with plan + evidence merged into a single doc:
-- Collects 4 input docs (PRD / 技术方案 / use-case / 已有测试用例) and surfaces conflicts for user confirmation before writing the plan
-- Picks layout based on feature scope: single-file for one entry-point, directory-style (`README.md` + per-scene `.md`) for ≥ 2 entry-points
-- Each scene organizes branches in **five-段式 + 3.X.Y numbering** (测试前检查 / 构造入参 / 预期结果 / 实际结果 / 判定) — stable GFM anchors, no duplicate-heading collisions
-- "测试前检查" enforces the 三步检查法: pre-SELECT → setup → post-SELECT confirm, each step with explicit expected state
-- Embeds real evidence (DB outputs / logs / RPC responses) directly into the doc — no scattered `evidence/round*/tc-*.log` files
-- Ships a separate `templates/reviewer-checklist.md` with red-line items (A 真实性 / B 完整性 / C 三维度证据 / D 风险声明 / E 项目规范) for the reviewer
-- UC numbers, table names, error code segments, service names all read from the consumer project's own use-case / 技术方案 / DB schema — no hardcoded assumptions
+Self-tests a feature/branch end-to-end before commit/MR/merge, producing the **四件套** (README.md / plan.md / round_N.md / defects.md) with **4 维度判定** (数据 / 返回 / 日志 / 告警):
+- 4 类输入文档 (PRD / 技术方案 / use-case / 已有测试用例) 逐项收集，拿不到显式标「无」+ 风险，不假装有依据
+- Step 2 写 plan（只写「验什么」的 4 维度严格预期）+ dispatch subagent 代码预审，P0 bug 测前修掉
+- Step 3 跑测按 4 维度取证入 round_N.md；e2e 优先，单测兜底（促成手段：改 SQL 造数据 / 手动触发 MQ / http 触发 cron）
+- Step 4 缺陷入 defects.md，三件套根因（文件+行号 / 代码块带注释 / 一句话总结），每个缺陷独立 commit
 
-**Requires**: Project with `docs/` directory; UC编号 / DB schema / RPC 服务名 from the project's own use-case 文档
+**Requires**: Project with `docs/` directory; UC编号 / DB schema / RPC 服务名 from the project's own use-case 文档；配合 `querying-dev-test-db`（查库出证据）+ `observability-skills`（查日志/告警）
 
-**Triggers**: "自测" / "测试计划" / "提测前" / "回归测试" / "用例缺口" / "对照需求测一遍" / "开发完了怎么测" / "validate against PRD before integration"
+**Triggers**: "自测" / "测试计划" / "提测前" / "回归测试" / "用例缺口" / "对照需求测一遍" / "开发完了怎么测" / "提测自测" / "发版前自测"
 
-**Pair with**: `plan-coding` (one writes the feature, the other tests it)
+**Pair with**: `querying-dev-test-db` (数据维度查库) / `observability-skills` (日志/告警维度) / `plan-coding` (一个写功能，一个测)
+
+### [querying-dev-test-db](./querying-dev-test-db/)
+
+Queries the dev/test MySQL database via the local `mycli` client — the data-dimension evidence source for self-test:
+- 连接只用 `~/.myclirc` 的 DSN 别名（`dev` / `test` / `manager`），命令里永不写明文密码
+- 内置 `\f` 收藏查询（node / ins / sta / qsl / myw / mydesc…），查 `node_execution_record` / `workflow_instance` / `workflow_summary` 开箱即用
+- bigint 毫秒时间戳归一：`FROM_UNIXTIME(create_time/1000)`；`trigger_expire_at` 13/16 位混存按位数归一
+- 护栏：只读查询（无 UPDATE/DELETE/DROP），日常用 `dev` 不用 `dev-root`
+
+**Requires**: `mycli` 已安装 + `~/.myclirc` 配好 `[alias_dsn]` 别名（含明文密码，不得 commit）
+
+**Triggers**: "查 dev 库" / "查 test 库" / "用 mycli 查数据库" / "看表数据" / "查 node_execution_record" / "bigint 时间转换"
+
+**Pair with**: `auto-self-test` (Step 3 数据维度查库出证据) / `test-env-triage` (排查时查数据)
 
 ### [test-env-triage](./test-env-triage/)
 
