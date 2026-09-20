@@ -150,6 +150,21 @@ Captures missing project conventions discovered during code review into the proj
 
 **Triggers**: "规范缺失" / "这条规范要不要加到文档" / "update project spec" / "sync convention to spec" / ...
 
+### [weekly-project-plan](./weekly-project-plan/)
+
+每周在飞书项目（Meego）建下周的「常规事项」单——把下周会议排成子任务，加一条固定 OnCall 子任务：
+
+- **工作日一律按国务院调休表算**，不按「周一到周五」猜：调休会把周六/周日变成上班日（2026 年 6 天），也会把周五变成假日（2026-09-25 中秋）。脚本 `scripts/workdays.py` 内置 2026 全年表，年份未收录时**退出码 3 停下来**，不猜
+- **会议纳入口径经真实数据反推验证**：`self_rsvp_status == accept` 且除我外至少 1 个参会人（会议室/群都算）。脚本输出与手工建的 7 条子任务逐条一致
+- **固化 Meego 的几个「返回 success 但没落库」行为**：子任务 `points` 必须塞进 `--schedule` 一起传、建单后要清 `started` 节点的模板默认估分 4（否则个人排期虚高）、`role_operate` 加关注人需回读
+- 触发日 = **本周最后一个工作日**，可能是周四（中秋周）或周六（调休），所以 launchd 跑周一~周六 14:00 + 脚本内廉价守卫
+
+**Requires**: `meegle` CLI（OAuth）+ `lark-cli`（日历/IM）+ `python3`
+
+**Triggers**: "建下周常规事项" / "常规事项单" / "下周的会议排进去" / "飞书项目周计划" / `weekly-project-plan` / `+auto`
+
+**Not for**: 飞书云文档的周计划（→ `weekly-plan`）、CLI/Skills 周报（→ `weekly-report`）
+
 ### [feishu-notify](./feishu-notify/)
 
 Get notified on **Lark/Feishu** whenever Claude Code finishes a response, completes a task, or needs your approval — so you can step away from the terminal without missing anything.
